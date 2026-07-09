@@ -186,8 +186,18 @@ inline std::pair<std::string, std::string> split_url(const std::string& url) {
     return {url.substr(0, path_start), url.substr(path_start)};
 }
 
-inline bool extract_zip_via_shell(const std::filesystem::path& zip_path, const std::filesystem::path& dest_dir,
+inline bool extract_zip_via_shell(const std::filesystem::path& zip_path_in, const std::filesystem::path& dest_dir_in,
                                    std::string& error) {
+    // IShellDispatch::NameSpace() silently returns null for a path that
+    // mixes '/' and '\' separators (verified: std::filesystem::exists()
+    // resolves the exact same string fine, since Win32 file APIs normalize
+    // separators — Shell Automation's string-based path parsing doesn't).
+    // Paths built from STREAMSOFT_*_DIR (a CMake variable, forward-slash by
+    // convention) concatenated via std::filesystem::path's operator/
+    // (native backslash) end up mixed, so this always needs to run.
+    std::filesystem::path zip_path = std::filesystem::path(zip_path_in).make_preferred();
+    std::filesystem::path dest_dir = std::filesystem::path(dest_dir_in).make_preferred();
+
     std::error_code ec;
     std::filesystem::create_directories(dest_dir, ec);
 
