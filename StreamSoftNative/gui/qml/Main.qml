@@ -261,7 +261,7 @@ ApplicationWindow {
                 }
 
                 Repeater {
-                    model: ["Оверлей", "Подключения", "Озвучка", "Алерты и медиа", "Команды чата", "Замьюченные", "Клон голоса", "Настройки"]
+                    model: ["Оверлей", "Подключения", "Озвучка", "Алерты и медиа", "Команды чата", "Замьюченные", "Клон голоса", "Настройки", "Обновления"]
                     delegate: NavButton {
                         required property string modelData
                         required property int index
@@ -316,6 +316,7 @@ ApplicationWindow {
                 MutedPage { id: mutedPage; width: pageStack.width }
                 RvcPage { id: rvcPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
+                UpdatesPage { id: updatesPage; width: pageStack.width }
             }
         }
     }

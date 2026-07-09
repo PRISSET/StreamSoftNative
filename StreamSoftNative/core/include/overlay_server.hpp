@@ -14,6 +14,7 @@
 #include <string>
 #include <thread>
 
+#include "auto_update.hpp"
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
 #include "gpu_check.hpp"
@@ -140,6 +141,7 @@ private:
         setup_commands_routes();
         setup_rvc_routes();
         setup_modules_routes();
+        setup_updates_routes();
         setup_obs_routes();
         setup_connections_routes();
         setup_test_routes();
@@ -581,6 +583,30 @@ private:
             resp["bytes_total"] = progress.bytes_total;
             resp["current_step"] = progress.current_step;
             if (progress.state == streamsoft::ModuleInstallState::Failed) resp["error"] = progress.error;
+            return crow::response(resp.dump());
+        });
+    }
+
+    // Powers the GUI's "Обновления" page — same GitHub Releases data
+    // auto_update.hpp already checks in the background, just surfaced for
+    // the user to read instead of acted on silently.
+    void setup_updates_routes() {
+        CROW_ROUTE(app_, "/api/updates")
+        ([] {
+            crow::json::wvalue resp;
+            resp["current_version"] = STREAMSOFT_VERSION;
+
+            auto history = streamsoft::fetch_release_history();
+            std::vector<crow::json::wvalue> releases;
+            for (const auto& r : history) {
+                crow::json::wvalue item;
+                item["version"] = r.version;
+                item["name"] = r.name;
+                item["notes"] = r.notes;
+                item["published_at"] = r.published_at;
+                releases.push_back(std::move(item));
+            }
+            resp["releases"] = std::move(releases);
             return crow::response(resp.dump());
         });
     }

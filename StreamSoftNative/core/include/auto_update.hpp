@@ -3,8 +3,9 @@
 // Background auto-update: periodically checks GitHub Releases for a newer
 // tagged version than this build (STREAMSOFT_VERSION), and if found,
 // downloads the new installer and runs it silently. Inno Setup's own
-// Restart Manager integration (/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS,
-// matched with [Setup] AppMutex in streamsoft.iss) closes this process and
+// Restart Manager integration (/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS) —
+// paired with main.cpp's WM_QUERYENDSESSION handling and
+// RegisterApplicationRestart(), see gui/main.cpp — closes this process and
 // reopens the new one on its own — there's no "reinstall wizard" the user
 // has to click through, same "just works in the background" feel as
 // Discord's own updater, without needing a custom differential-patch
@@ -128,6 +129,63 @@ inline UpdateCheckResult check_for_update() {
         result.latest_version.clear();
         result.installer_url.clear();
     }
+    return result;
+}
+
+struct ReleaseInfo {
+    std::string version;       // tag_name, e.g. "v1.0.0"
+    std::string name;          // release title
+    std::string notes;         // release body, as typed in `gh release create --notes`
+    std::string published_at;  // ISO 8601, e.g. "2026-07-09T20:01:05Z"
+};
+
+// Powers the GUI's "Обновления" page (UpdatesPage.qml via GET /api/updates)
+// — same list-and-filter logic as check_for_update() (only releases that
+// actually carry the app installer, so the tts-v1/rvc-voice-v1 module
+// packages never show up here either), just returning every match instead
+// of only the single newest one, sorted newest-first by parsed version
+// rather than trusting GitHub's own list order (see check_for_update()'s
+// comment on why that order isn't reliable).
+inline std::vector<ReleaseInfo> fetch_release_history() {
+    std::vector<ReleaseInfo> result;
+
+    httplib::Client cli(kUpdateApiHost);
+    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
+    cli.enable_server_certificate_verification(true);
+    cli.set_connection_timeout(10);
+
+    httplib::Headers headers{{"User-Agent", "StreamSoft-Native"}, {"Accept", "application/vnd.github+json"}};
+    auto resp = cli.Get(kUpdateApiPath, headers);
+    if (!resp || resp->status != 200) return result;
+
+    auto releases = crow::json::load(resp->body);
+    if (!releases) return result;
+
+    for (const auto& release : releases) {
+        if (!release.has("tag_name") || !release.has("assets")) continue;
+        if (release.has("draft") && release["draft"].b()) continue;
+        if (release.has("prerelease") && release["prerelease"].b()) continue;
+
+        bool has_installer = false;
+        for (const auto& asset : release["assets"]) {
+            if (asset.has("name") && std::string(asset["name"].s()) == kUpdateAssetName) {
+                has_installer = true;
+                break;
+            }
+        }
+        if (!has_installer) continue;
+
+        ReleaseInfo info;
+        info.version = std::string(release["tag_name"].s());
+        info.name = release.has("name") ? std::string(release["name"].s()) : info.version;
+        info.notes = release.has("body") ? std::string(release["body"].s()) : "";
+        info.published_at = release.has("published_at") ? std::string(release["published_at"].s()) : "";
+        result.push_back(std::move(info));
+    }
+
+    std::sort(result.begin(), result.end(), [](const ReleaseInfo& a, const ReleaseInfo& b) {
+        return version_greater(parse_version(a.version), parse_version(b.version));
+    });
     return result;
 }
 
