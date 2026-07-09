@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="96" height="96" alt="StreamSoft">
+
 # StreamSoft
 
 Нативный стрим-ассистент для Windows: чат из Twitch и YouTube, алерты, оверлей для
