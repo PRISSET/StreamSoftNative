@@ -1,3 +1,14 @@
+// Must come before core_app.hpp (pulls in crow.h -> Asio, which needs
+// winsock2.h — see the identical guard/explanation in discord_presence.hpp)
+// and before any Qt header that might pull in a bare <windows.h> first.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include "api_client.hpp"
 #include "core_app.hpp"
 #include "overlay_ws_client.hpp"
@@ -17,6 +28,30 @@
 #endif
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+    // Second launch while already running (desktop shortcut, Start Menu,
+    // autostart racing a manual start) used to spin up a whole second
+    // process — second core thread trying to bind the same overlay port,
+    // second tray icon sitting next to the first. A named mutex is the
+    // standard single-instance check: the first process to create it wins,
+    // every later one sees ERROR_ALREADY_EXISTS instead. On that path we
+    // just surface the existing window and exit immediately, before any of
+    // the heavy startup (core thread, QGuiApplication) below ever runs.
+    // Never explicitly closed — Windows releases it automatically when this
+    // process exits, which is exactly the lifetime we want (held for as
+    // long as this instance is running, whether that's until clean
+    // shutdown or a crash).
+    CreateMutexW(nullptr, TRUE, L"Global\\StreamSoftNative_SingleInstance");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        HWND existing = FindWindowW(nullptr, L"StreamSoft — настройки");
+        if (existing) {
+            ShowWindow(existing, SW_RESTORE);
+            SetForegroundWindow(existing);
+        }
+        return 0;
+    }
+#endif
+
     // Must be set before QGuiApplication/engine exist. Native styles (macOS,
     // Windows, WindowsVista) refuse to let QML override a control's
     // background/handle — Basic is the only style that honors full custom

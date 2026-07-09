@@ -11,6 +11,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
@@ -141,15 +142,24 @@ private:
     void setup_connections_routes() {
         CROW_ROUTE(app_, "/api/connections")
             .methods(crow::HTTPMethod::Get)([this](const crow::request&) {
+                std::lock_guard<std::mutex> lock(connections_mutex_);
                 auto c = ConnectionsConfig::load();
                 return crow::response(c.to_json().dump());
             });
 
+        // Crow runs multithreaded — without this lock, two POSTs landing
+        // close together (e.g. tabbing from the Client ID field straight to
+        // the channel field, each firing its own save()) could both
+        // load() the file before either save()s, and whichever writes last
+        // would silently overwrite the other's change. This is the "Client
+        // ID sometimes doesn't save" bug: nothing wrong with the field
+        // itself, just two save-the-whole-file requests racing.
         CROW_ROUTE(app_, "/api/connections")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
                 if (!body) return crow::response(400, R"({"ok": false, "error": "bad json"})");
 
+                std::lock_guard<std::mutex> lock(connections_mutex_);
                 auto c = ConnectionsConfig::load();
                 if (body.has("twitch_client_id")) c.twitch_client_id = std::string(body["twitch_client_id"].s());
                 if (body.has("twitch_channel")) c.twitch_channel = std::string(body["twitch_channel"].s());
@@ -187,7 +197,33 @@ private:
                 resp["pending"] = s.pending;
                 resp["verification_uri"] = s.verification_uri;
                 resp["user_code"] = s.user_code;
+                resp["last_result"] = s.last_result;
+                resp["last_username"] = s.last_username;
+                resp["last_error"] = s.last_error;
                 return crow::response(resp.dump());
+            });
+
+        // Fires the device-code flow immediately after the GUI saves a
+        // Client ID, instead of waiting for the Twitch worker threads
+        // (which only start once, at the next full app launch) to get to
+        // it — see run_manual_auth() in twitch_auth.hpp.
+        CROW_ROUTE(app_, "/api/twitch/start-auth")
+            .methods(crow::HTTPMethod::Post)([](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string client_id =
+                    (body && body.has("client_id")) ? std::string(body["client_id"].s()) : std::string();
+                if (client_id.empty()) client_id = ConnectionsConfig::load().twitch_client_id;
+                if (client_id.empty()) return crow::response(400, R"({"ok": false, "error": "no client_id"})");
+
+                {
+                    auto& s = streamsoft::twitch::auth_prompt_state();
+                    std::lock_guard<std::mutex> lock(s.mutex);
+                    s.last_result.clear();
+                    s.last_username.clear();
+                    s.last_error.clear();
+                }
+                std::thread(streamsoft::twitch::run_manual_auth, client_id).detach();
+                return crow::response(R"({"ok": true})");
             });
     }
 
@@ -617,6 +653,8 @@ private:
     ModerationState moderation_;
     CommandsStore commands_;
     tts::TtsWorker* tts_ = nullptr;
+
+    std::mutex connections_mutex_;
 
     std::mutex clients_mutex_;
     std::set<crow::websocket::connection*> clients_;

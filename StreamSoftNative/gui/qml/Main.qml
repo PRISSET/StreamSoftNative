@@ -380,6 +380,16 @@ ApplicationWindow {
     property string twitchAuthCode: ""
     property string twitchAuthDismissedCode: ""
 
+    // Outcome of the most recent attempt (see run_manual_auth() in
+    // twitch_auth.hpp) — without this, the banner above just vanished the
+    // moment `pending` went back to false, with no way to tell "connected"
+    // from "failed, try again".
+    property string twitchAuthResult: ""
+    property string twitchAuthResultUsername: ""
+    property string twitchAuthResultError: ""
+    property string twitchAuthResultDismissedKey: ""
+    readonly property string twitchAuthResultKey: twitchAuthResult + "|" + twitchAuthResultUsername + "|" + twitchAuthResultError
+
     Timer {
         interval: 3000
         running: true
@@ -391,8 +401,21 @@ ApplicationWindow {
                 window.twitchAuthPending = !!data.pending
                 window.twitchAuthUrl = data.verification_uri || ""
                 window.twitchAuthCode = data.user_code || ""
+                window.twitchAuthResult = data.last_result || ""
+                window.twitchAuthResultUsername = data.last_username || ""
+                window.twitchAuthResultError = data.last_error || ""
+                if (window.twitchAuthResult === "") resultAutoHide.stop()
+                else if (window.twitchAuthResultKey !== window.twitchAuthResultDismissedKey && !resultAutoHide.running) resultAutoHide.restart()
             })
         }
+    }
+
+    // Success/failure toast fades on its own after a few seconds — dismissing
+    // it just records the key so it doesn't pop back on the next poll tick.
+    Timer {
+        id: resultAutoHide
+        interval: 6000
+        onTriggered: window.twitchAuthResultDismissedKey = window.twitchAuthResultKey
     }
 
     TextEdit {
@@ -402,9 +425,14 @@ ApplicationWindow {
 
     Item {
         id: twitchBanner
-        readonly property bool shouldShow: window.twitchAuthPending
+        readonly property bool showAuth: window.twitchAuthPending
             && window.twitchAuthCode.length > 0
             && window.twitchAuthCode !== window.twitchAuthDismissedCode
+        readonly property bool showResult: !window.twitchAuthPending
+            && window.twitchAuthResult !== ""
+            && window.twitchAuthResultKey !== window.twitchAuthResultDismissedKey
+        readonly property bool shouldShow: showAuth || showResult
+        readonly property bool isSuccess: showResult && window.twitchAuthResult === "success"
 
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
@@ -424,14 +452,21 @@ ApplicationWindow {
             pad: 12
             refractPx: 10
             specularStrength: 0.55
-            tintColor: Qt.rgba(0.45, 0.16, 0.04, 0.6)
-            rimColor: Qt.rgba(1, 0.72, 0.35, 0.65)
+            tintColor: twitchBanner.showResult
+                ? (twitchBanner.isSuccess ? Qt.rgba(0.11, 0.35, 0.2, 0.6) : Qt.rgba(0.4, 0.1, 0.1, 0.6))
+                : Qt.rgba(0.45, 0.16, 0.04, 0.6)
+            rimColor: twitchBanner.showResult
+                ? (twitchBanner.isSuccess ? Qt.rgba(0.55, 1, 0.75, 0.65) : Qt.rgba(1, 0.5, 0.5, 0.65))
+                : Qt.rgba(1, 0.72, 0.35, 0.65)
+            Behavior on tintColor { ColorAnimation { duration: 200 } }
+            Behavior on rimColor { ColorAnimation { duration: 200 } }
         }
 
         RowLayout {
             id: bannerRow
             anchors.centerIn: parent
             spacing: 10
+            visible: twitchBanner.showAuth
 
             Text {
                 text: "Авторизуй Twitch:"
@@ -465,6 +500,37 @@ ApplicationWindow {
                 implicitHeight: 30
                 implicitWidth: 36
                 onClicked: window.twitchAuthDismissedCode = window.twitchAuthCode
+            }
+        }
+
+        RowLayout {
+            id: resultRow
+            anchors.centerIn: parent
+            spacing: 10
+            visible: twitchBanner.showResult
+
+            Text {
+                text: twitchBanner.isSuccess ? "✓" : "!"
+                color: twitchBanner.isSuccess ? Theme.good : Theme.bad
+                font.pixelSize: Theme.fontLg
+                font.weight: Font.Bold
+            }
+            Text {
+                text: twitchBanner.isSuccess
+                    ? "Twitch подключён: " + window.twitchAuthResultUsername
+                    : "Ошибка авторизации Twitch: " + window.twitchAuthResultError
+                color: Theme.text
+                font.pixelSize: Theme.fontMd
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+                Layout.maximumWidth: 480
+            }
+            PillButton {
+                danger: true
+                text: "✕"
+                implicitHeight: 30
+                implicitWidth: 36
+                onClicked: window.twitchAuthResultDismissedKey = window.twitchAuthResultKey
             }
         }
     }

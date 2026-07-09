@@ -39,6 +39,16 @@ struct AuthPromptState {
     bool pending = false;
     std::string verification_uri;
     std::string user_code;
+
+    // Outcome of the most recent manual auth attempt (see
+    // run_manual_auth() / POST /api/twitch/start-auth) — "" while nothing's
+    // run yet or a new attempt just started, "success"/"error" once it
+    // finishes. Without this, the GUI could only see `pending` flip back to
+    // false and had no way to tell "it worked" from "it failed" — the
+    // banner just vanished either way.
+    std::string last_result;
+    std::string last_username;
+    std::string last_error;
 };
 
 inline AuthPromptState& auth_prompt_state() {
@@ -294,6 +304,28 @@ inline std::string get_user_id(const std::string& client_id, const std::string& 
         throw std::runtime_error("Не удалось получить id канала " + login + ": пустой ответ");
     }
     return std::string(data["data"][0]["id"].s());
+}
+
+// Kicked off from POST /api/twitch/start-auth (see overlay_server.hpp) the
+// moment the GUI saves a new Client ID — without this, the device-code
+// prompt only ever appeared once the Twitch chat/EventSub worker threads
+// happened to start, which only happens at the next full app launch.
+// Records success/failure into auth_prompt_state() so the polling GUI can
+// show a real outcome instead of the banner just disappearing either way.
+inline void run_manual_auth(const std::string& client_id) {
+    auto& s = auth_prompt_state();
+    try {
+        std::string token = get_access_token(client_id);
+        std::string username = get_username(client_id, token);
+        std::lock_guard<std::mutex> lock(s.mutex);
+        s.last_result = "success";
+        s.last_username = username;
+        s.last_error.clear();
+    } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(s.mutex);
+        s.last_result = "error";
+        s.last_error = e.what();
+    }
 }
 
 } // namespace streamsoft::twitch

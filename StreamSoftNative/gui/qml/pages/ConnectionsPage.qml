@@ -101,7 +101,15 @@ ColumnLayout {
             id: twitchClientId
             Layout.fillWidth: true
             placeholderText: "например, gp762nuuoqcoxypju8c569th9wz7q5"
-            onEditingFinished: root.save()
+            onEditingFinished: {
+                root.save()
+                // Otherwise the device-code banner only ever appears once
+                // the Twitch worker threads happen to start, which only
+                // happens at the next full app restart.
+                if (text.length > 0) {
+                    api.post("/api/twitch/start-auth", { client_id: text }, function () {}, false)
+                }
+            }
         }
 
         Text { text: "Канал (без @)"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
