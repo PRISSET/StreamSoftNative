@@ -57,40 +57,40 @@ struct ModuleManifest {
 };
 
 // Real package URLs go here once built and uploaded to GitHub Releases on
-// PRISSET/StreamSoft — placeholders below until then (this is the one piece
-// that needs real multi-GB assets uploaded, which has to happen outside
-// this codebase — see CLAUDE.md §2 / plan §3). RVC is split into multiple
-// parts because GitHub Releases caps a single asset at 2GB.
+// PRISSET/StreamSoftNative — placeholders below until then (this is the one
+// piece that needs real multi-GB assets uploaded, which has to happen
+// outside this codebase). RVC is split into multiple parts because GitHub
+// Releases caps a single asset at 2GB.
 //
-// Both zips are just "everything the existing Python reference project
-// (softforstream/adapters/tts, softforstream/rvc_service) already downloads
-// and runs with" — repackaged so the C++ side doesn't have to pip-install
-// anything live on the end user's machine. Real upstream sources, for
-// whoever builds these zips:
+// Both zips just need embeddable Python (self-contained, no pip-install on
+// the end user's machine) plus this repo's own adapters/tts/ and
+// adapters/rvc/ (server.py + requirements.txt already here) with their
+// requirements installed into it. Real upstream sources, for whoever builds
+// these zips:
 //   - Embeddable Python (Windows): python.org's official
 //     python-<ver>-embed-amd64.zip, plus get-pip.py (bootstrap.pypa.io) to
 //     add pip to it (the embeddable distribution ships without pip).
 //   - TTS zip → extracts to adapters/tts, needs venv/Scripts/python.exe +
 //     server.py (see tts_launcher.hpp::is_installed()): the embeddable
-//     Python above with `edge-tts`, `fastapi`, `uvicorn` pip-installed, plus
-//     softforstream/adapters/tts/server.py.
-//   - RVC zip(s) → extract to adapters/rvc: same embeddable Python approach,
-//     with `rvc-python` (https://github.com/daswer123/rvc-python) and
-//     `torch==2.5.1+cu121`/`torchaudio==2.5.1+cu121` (from
-//     https://download.pytorch.org/whl/cu121, see
-//     softforstream/rvc_service/requirements.txt for the exact pinned
-//     command) pip-installed. Base models — hubert_base.pt, rmvpe.pt,
-//     rmvpe.onnx — come from
+//     Python above with adapters/tts/requirements.txt pip-installed, plus
+//     adapters/tts/server.py (already in this repo).
+//   - RVC zip(s) → extract to adapters/rvc: same embeddable Python approach
+//     with adapters/rvc/requirements.txt pip-installed (pulls in
+//     `rvc-python`, https://github.com/daswer123/rvc-python) plus
+//     adapters/rvc/server.py (already in this repo). Torch itself needs the
+//     CUDA build specifically — `torch==2.5.1+cu121`/`torchaudio==2.5.1+cu121`
+//     from https://download.pytorch.org/whl/cu121, not the default PyPI
+//     wheel. Base models — hubert_base.pt, rmvpe.pt, rmvpe.onnx — come from
 //     https://huggingface.co/Daswer123/RVC_Base/resolve/main/ (same URLs
 //     rvc-python's own download_model.py uses). The actual voice
-//     (ayaka.pth/ayaka.index, softforstream/rvc_service/models/ayaka/) has
-//     no upstream source — bundle those two files into the RVC zip
-//     directly so a fresh install has a working voice out of the box.
+//     (ayaka.pth/ayaka.index) has no upstream source — bundle those two
+//     files into the RVC zip directly so a fresh install has a working
+//     voice out of the box.
 inline const ModuleManifest& tts_module_manifest() {
     static const ModuleManifest m{
         "tts",
         resolve_resource_dir("adapters/tts", STREAMSOFT_TTS_ADAPTER_DIR),
-        {ModulePackagePart{"https://github.com/PRISSET/StreamSoft/releases/download/tts-v1/tts-adapter.zip"}},
+        {ModulePackagePart{"https://github.com/PRISSET/StreamSoftNative/releases/download/tts-v1/tts-adapter.zip"}},
         false,
         512,
         60,
@@ -103,8 +103,8 @@ inline const ModuleManifest& rvc_module_manifest() {
         "rvc",
         resolve_resource_dir("adapters/rvc", STREAMSOFT_RVC_ADAPTER_DIR),
         {
-            ModulePackagePart{"https://github.com/PRISSET/StreamSoft/releases/download/rvc-v1/rvc-part1-runtime.zip"},
-            ModulePackagePart{"https://github.com/PRISSET/StreamSoft/releases/download/rvc-v1/rvc-part2-models.zip"},
+            ModulePackagePart{"https://github.com/PRISSET/StreamSoftNative/releases/download/rvc-v1/rvc-part1-runtime.zip"},
+            ModulePackagePart{"https://github.com/PRISSET/StreamSoftNative/releases/download/rvc-v1/rvc-part2-models.zip"},
         },
         true,
         8192,

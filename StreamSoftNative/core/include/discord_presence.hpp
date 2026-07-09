@@ -46,7 +46,7 @@ namespace streamsoft::discord {
 // there's nothing here for an end user to configure, see, or turn off (see
 // core_app.hpp, which starts this unconditionally).
 inline constexpr const char* kClientId = "1524582789020651651";
-inline constexpr const char* kRepoUrl = "https://github.com/PRISSET/StreamSoft";
+inline constexpr const char* kRepoUrl = "https://github.com/PRISSET/StreamSoftNative";
 
 enum class Opcode : std::uint32_t {
     Handshake = 0,
