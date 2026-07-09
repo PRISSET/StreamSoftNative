@@ -13,6 +13,7 @@
 #include "core_app.hpp"
 #include "overlay_ws_client.hpp"
 
+#include <QAbstractNativeEventFilter>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
@@ -25,6 +26,32 @@
 
 #ifdef Q_OS_WIN
 #include <dwmapi.h>
+
+// Main.qml's onClosing deliberately vetoes a normal window close (hides to
+// tray instead of exiting) — see the "quitting" flag there. That's exactly
+// what breaks the installer's silent self-update (auto_update.hpp): Restart
+// Manager asks the running app to let go of its files via
+// WM_QUERYENDSESSION/WM_ENDSESSION, which Qt routes through the very same
+// close-event path, so the app just hides again and never actually exits —
+// confirmed live: Setup waits 30s ("Shutting down applications using our
+// files"), gives up ("Some applications could not be shut down"), and
+// aborts the whole update. A session-end/Restart-Manager request isn't a
+// user click on the X button; there's nothing to ask the user about and
+// nothing worth vetoing, so this bypasses the QML close path entirely and
+// exits immediately (settings are already written on every change, nothing
+// left to save).
+class SessionEndFilter : public QAbstractNativeEventFilter {
+public:
+    bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override {
+        if (eventType != "windows_generic_MSG") return false;
+        auto* msg = static_cast<MSG*>(message);
+        if (msg->message == WM_QUERYENDSESSION || msg->message == WM_ENDSESSION) {
+            if (result) *result = TRUE;
+            ExitProcess(0);
+        }
+        return false;
+    }
+};
 #endif
 
 int main(int argc, char* argv[]) {
@@ -50,6 +77,19 @@ int main(int argc, char* argv[]) {
         }
         return 0;
     }
+
+    // Without this, Setup's /RESTARTAPPLICATIONS (auto_update.hpp's silent
+    // self-update) closes the app via Restart Manager just fine but never
+    // actually relaunches it — RmRestart() only relaunches processes that
+    // called RegisterApplicationRestart() to tell Windows how, and we never
+    // did. Confirmed live: install log showed "Attempting to restart
+    // applications" / "Installation process succeeded" with no error, yet
+    // no new process ever appeared. nullptr command line = relaunch with
+    // the same one this process was started with (Setup's own
+    // /RESTARTAPPLICATIONS already does that part); the flags just say
+    // "don't bother restarting after a crash/hang/reboot", since this is
+    // only meant to cover the clean RM-shutdown-for-update case.
+    RegisterApplicationRestart(nullptr, RESTART_NO_CRASH | RESTART_NO_HANG | RESTART_NO_REBOOT);
 #endif
 
     // Must be set before QGuiApplication/engine exist. Native styles (macOS,
@@ -67,6 +107,10 @@ int main(int argc, char* argv[]) {
     coreThread.detach();
 
     QGuiApplication app(argc, argv);
+#ifdef Q_OS_WIN
+    SessionEndFilter sessionEndFilter;
+    app.installNativeEventFilter(&sessionEndFilter);
+#endif
     // Qt.labs.settings' Settings QML type (used to persist the chosen
     // background theme) stores under Software/<Organization>/<Application>
     // in the registry on Windows — without these it falls back to the

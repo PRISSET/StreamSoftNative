@@ -26,12 +26,15 @@ AppId={{F3A6E6A0-6C3B-4A6E-9C7B-STREAMSOFT001}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-; Matches the CreateMutexW name in gui/main.cpp — lets Setup's Restart
-; Manager integration (see [Run]'s /CLOSEAPPLICATIONS in auto_update.hpp's
-; silent-update launch) detect and close the running app on its own, then
-; relaunch it after a background self-update, without any custom
-; shutdown-coordination code on our side.
-AppMutex=Global\StreamSoftNative_SingleInstance
+; Deliberately NOT setting AppMutex here: that directive makes Setup pop up
+; its own "please close the app first" prompt *before* anything else runs,
+; and under /SUPPRESSMSGBOXES that prompt auto-answers Cancel and aborts
+; the whole install outright (confirmed live: "Defaulting to Cancel for
+; suppressed message box... Got EAbort exception" — the app was never even
+; given a chance to close). /CLOSEAPPLICATIONS below doesn't need AppMutex
+; at all — Restart Manager finds the running process by which one holds the
+; actual target files open, so that's the only mechanism this relies on for
+; auto_update.hpp's silent self-update to actually close and reopen the app.
 ; Per-user install, no admin/UAC prompt — everything this app touches
 ; (Registry autostart key, connections.json/etc. via
 ; ensure_writable_config_cwd()) is already per-user, so a machine-wide
