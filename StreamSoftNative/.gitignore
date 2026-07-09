@@ -22,6 +22,11 @@ installer/Output/
 adapters/*/vendor/
 adapters/*/python-embed/
 
+# Временные скачивания module_installer.hpp (см. run_module_install) —
+# создаются рядом с adapters/<name>/, а не внутри неё, так и не удаляются
+# при неудачной установке
+adapters/*_download_tmp/
+
 # Секреты — никогда не коммитить
 .env
 twitch_token.json
