@@ -1,0 +1,29 @@
+# Секреты и локальные учётные данные — никогда не коммитить
+.env
+twitch_token.json
+runtime_settings.json
+
+# Виртуальное окружение Python
+venv/
+__pycache__/
+*.pyc
+
+# RVC-сервис: свой venv, веса моделей и тестовые файлы — не часть кода
+rvc_service/venv/
+rvc_service/base_model/
+rvc_service/models/
+rvc_service/*.log
+rvc_service/test_*.wav
+rvc_service/test_*.mp3
+
+# Логи
+*.log
+
+# Ваши гифки/звуки для алертов — личный контент, не часть кода
+overlay/media/*
+!overlay/media/README.txt
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db

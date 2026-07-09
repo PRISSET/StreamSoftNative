@@ -1,0 +1,8 @@
+[
+  {
+    "trigger": "!faceit",
+    "response": "https://www.faceit.com/ru/players/PRISSETIK26",
+    "enabled": true,
+    "cooldown": 15
+  }
+]

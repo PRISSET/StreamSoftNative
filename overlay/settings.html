@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Настройки стрим-бота</title>
+<link rel="stylesheet" href="/static/settings.css" />
+</head>
+<body>
+
+<div class="layout">
+  <nav class="sidebar">
+    <div class="logo">
+      <span class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2.5"/><path d="M16 10.5 22 7v10l-6-3.5"/></svg>
+      </span>
+      <span class="logo-text">
+        <span class="logo-title">Stream Panel</span>
+        <span class="logo-sub">by PRISSETIK</span>
+      </span>
+    </div>
+
+    <button class="nav-btn active" data-tab="overlay">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      Оверлей и превью
+    </button>
+    <button class="nav-btn" data-tab="tts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+      Озвучка
+    </button>
+    <button class="nav-btn" data-tab="alerts">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+      Алерты и медиа
+    </button>
+    <button class="nav-btn" data-tab="commands">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12"/></svg>
+      Команды чата
+    </button>
+    <button class="nav-btn" data-tab="muted">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M19 10v2a7 7 0 0 1-1.02 3.66M5 10v2a7 7 0 0 0 7 7 6.96 6.96 0 0 0 3.09-.71"/><path d="M12 19v3M2 2l20 20"/></svg>
+      Замьюченные
+    </button>
+    <button class="nav-btn" data-tab="rvc">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9.5c0-1.5 1.2-2.5 3-2.5s3 1 3 2.5-1 2-3 2.5-2 1-2 2M12 17h.01"/></svg>
+      Клон голоса
+    </button>
+
+    <div class="sidebar-foot">Изменения сохраняются автоматически.</div>
+  </nav>
+
+  <main class="content">
+
+    <section id="tab-overlay" class="tab active">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <div>
+          <h2>Оверлей и превью</h2>
+          <p class="section-sub">Выбери оформление и посмотри, как оно будет выглядеть в OBS, до того как добавишь источник.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="field">
+          <span>Шаблон</span>
+          <select id="theme">
+            <option value="minimal">Minimal — прозрачный, без рамок</option>
+            <option value="card">Card — светлые карточки</option>
+            <option value="neon">Neon — тёмный, неоновая обводка</option>
+          </select>
+        </label>
+
+        <label class="field slider-field">
+          <span>Масштаб чата и алертов <b id="overlay_scale_value">100%</b></span>
+          <input id="overlay_scale" type="range" min="50" max="200" step="5" />
+        </label>
+        <p class="hint">Если в OBS гифка и ник еле видны — подними масштаб тут, вместо того чтобы растягивать источник.</p>
+
+        <div class="preview-tabs">
+          <button class="preview-btn active" data-src="/events">Алерты</button>
+          <button class="preview-btn" data-src="/chat">Чат</button>
+        </div>
+        <div class="preview-box">
+          <iframe id="preview-frame" src="/events"></iframe>
+        </div>
+
+        <div class="test-row">
+          <select id="test-kind">
+            <option value="follow">Фоллоу</option>
+            <option value="subscribe">Подписка</option>
+            <option value="gift_sub">Подарочная подписка</option>
+            <option value="raid">Рейд</option>
+            <option value="cheer">Донат битсами</option>
+          </select>
+          <button id="test-event-btn">Показать тестовый алерт</button>
+          <button id="test-chat-btn" class="btn-ghost">Тестовое сообщение чата</button>
+        </div>
+
+        <p class="hint">Шаблон меняется сразу на всех открытых источниках оверлея, без перезагрузки.</p>
+        <div class="links">
+          <a href="/chat" target="_blank">/chat</a>
+          <a href="/events" target="_blank">/events</a>
+          <a href="/" target="_blank">/ (всё вместе)</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-tts" class="tab">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></svg>
+        </div>
+        <div>
+          <h2>Озвучка (TTS)</h2>
+          <p class="section-sub">Голоса подбираются автоматически по языку сообщения — русский и английский настраиваются отдельно.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <label class="field">
+            <span>Голос RU</span>
+            <input id="tts_voice_ru" type="text" placeholder="ru-RU-DmitryNeural" />
+          </label>
+          <label class="field">
+            <span>Голос EN</span>
+            <input id="tts_voice_en" type="text" placeholder="en-US-GuyNeural" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Скорость речи</span>
+          <input id="tts_rate" type="text" placeholder="+0%" />
+        </label>
+      </div>
+
+      <div class="card">
+        <label class="field slider-field">
+          <span>Громкость TTS <b id="tts_volume_value">100%</b></span>
+          <input id="tts_volume" type="range" min="0" max="200" step="5" />
+        </label>
+        <label class="toggle-field field">
+          <span class="toggle-text">
+            <span class="toggle-title">Озвучивать имя автора</span>
+            <span class="toggle-sub">Перед текстом будет произноситься ник отправителя</span>
+          </span>
+          <input id="tts_say_author" type="checkbox" />
+        </label>
+      </div>
+    </section>
+
+    <section id="tab-alerts" class="tab">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+        </div>
+        <div>
+          <h2>Алерты и медиа</h2>
+          <p class="section-sub">Гифка и звук проигрываются прямо в браузер-источнике /events — грузи файлы под каждое событие.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="field slider-field">
+          <span>Громкость звука алертов <b id="event_volume_value">100%</b></span>
+          <input id="event_volume" type="range" min="0" max="100" step="5" />
+        </label>
+      </div>
+
+      <p class="card-title">Файлы по событиям</p>
+      <div id="media-grid" class="media-grid"></div>
+    </section>
+
+    <section id="tab-commands" class="tab">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12"/></svg>
+        </div>
+        <div>
+          <h2>Команды чата</h2>
+          <p class="section-sub">Зритель пишет триггер (например <code>!faceit</code>) — бот сам отвечает в чат. Пока работает только для Twitch (нужны права на отправку сообщений).</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="commands-list" class="muted-list"></div>
+        <div class="add-row" style="flex-wrap: wrap; gap: 10px 10px;">
+          <input id="cmd-trigger" type="text" placeholder="!faceit" style="flex: 0 0 140px;" />
+          <input id="cmd-response" type="text" placeholder="Текст ответа в чат, например: мой Faceit — faceit.com/players/..." style="flex: 1 1 260px;" />
+          <input id="cmd-cooldown" type="number" min="0" value="15" title="Кулдаун, секунд" style="flex: 0 0 90px;" />
+          <button id="cmd-add">Добавить</button>
+        </div>
+        <p class="hint">Кулдаун — минимальный интервал между срабатываниями одной и той же команды (защита от спама/бана за флуд).</p>
+      </div>
+    </section>
+
+    <section id="tab-muted" class="tab">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M19 10v2a7 7 0 0 1-1.02 3.66M5 10v2a7 7 0 0 0 7 7 6.96 6.96 0 0 0 3.09-.71"/><path d="M12 19v3M2 2l20 20"/></svg>
+        </div>
+        <div>
+          <h2>Замьюченные</h2>
+          <p class="section-sub">Эти зрители не озвучиваются и не попадают в оверлей/Telegram, пока не размьютишь.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div id="muted-list" class="muted-list"></div>
+        <div class="add-row">
+          <input id="mute-input" type="text" placeholder="ник" />
+          <button id="mute-add">Замьютить</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-rvc" class="tab">
+      <div class="section-head">
+        <div class="section-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9.5c0-1.5 1.2-2.5 3-2.5s3 1 3 2.5-1 2-3 2.5-2 1-2 2M12 17h.01"/></svg>
+        </div>
+        <div>
+          <h2>Клонированный голос (RVC)</h2>
+          <p class="section-sub">Пропускает уже готовую озвучку через отдельный локальный сервис (rvc_service), меняя тембр на выбранный голос. Если сервис недоступен — звучит обычный TTS, чат не ломается.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="toggle-field field">
+          <span class="toggle-text">
+            <span class="toggle-title">Клонированный голос</span>
+            <span class="toggle-sub">Требует запущенный rvc_service (см. README)</span>
+          </span>
+          <input id="rvc_enabled" type="checkbox" />
+        </label>
+
+        <div class="media-slot" style="margin-top: 14px">
+          <span class="dot" id="rvc-status-dot"></span>
+          <span id="rvc-status-text">Проверка...</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="field-row">
+          <label class="field">
+            <span>Голос</span>
+            <select id="rvc_model"></select>
+          </label>
+          <label class="field">
+            <span>Область действия</span>
+            <select id="rvc_scope">
+              <option value="alerts">Только алерты</option>
+              <option value="all">Всё (чат + алерты)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <label class="field slider-field">
+          <span>Сдвиг тона, полутоны <b id="rvc_pitch_value">+12</b></span>
+          <input id="rvc_pitch" type="range" min="-24" max="24" step="1" />
+        </label>
+        <label class="field slider-field">
+          <span>Index rate <b id="rvc_index_rate_value">0.30</b></span>
+          <input id="rvc_index_rate" type="range" min="0" max="1" step="0.05" />
+        </label>
+        <label class="field slider-field">
+          <span>Protect <b id="rvc_protect_value">0.50</b></span>
+          <input id="rvc_protect" type="range" min="0" max="0.5" step="0.01" />
+        </label>
+        <label class="field">
+          <span>Метод определения высоты тона</span>
+          <select id="rvc_f0method">
+            <option value="rmvpe">rmvpe (рекомендуется)</option>
+            <option value="harvest">harvest</option>
+            <option value="pm">pm (быстрее, грубее)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="test-row">
+        <button id="rvc-test-btn">Тест голоса (тестовый алерт)</button>
+      </div>
+      <p class="hint">При сдвиге мужской→женский голос обычно нужно +10..+12 полутонов, иначе появляется хрипота.</p>
+    </section>
+
+  </main>
+</div>
+
+<div id="status" class="toast">Автосохранение включено</div>
+
+<script src="/static/settings.js"></script>
+</body>
+</html>

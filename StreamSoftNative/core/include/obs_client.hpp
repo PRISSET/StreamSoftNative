@@ -1,0 +1,244 @@
+#pragma once
+
+// obs-websocket v5 client — no OBS plugin needed, OBS 28+ ships this
+// protocol built in (Tools -> WebSocket Server Settings). Handles the
+// Hello/Identify auth handshake and blocking request/response, then a
+// higher-level ensure_browser_sources() that creates or updates the two
+// overlay Browser Sources (/chat, /events) sized to the current canvas.
+
+#include <crow/json.h>
+#include <crow/logging.h>
+#include <ixwebsocket/IXWebSocket.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <openssl/evp.h>
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+
+namespace streamsoft::obs {
+
+inline std::string base64_encode(const unsigned char* data, size_t len) {
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+    BIO* mem = BIO_new(BIO_s_mem());
+    BIO_push(b64, mem);
+    BIO_write(b64, data, static_cast<int>(len));
+    BIO_flush(b64);
+    BUF_MEM* bptr = nullptr;
+    BIO_get_mem_ptr(b64, &bptr);
+    std::string result(bptr->data, bptr->length);
+    BIO_free_all(b64);
+    return result;
+}
+
+// obs-websocket auth: base64(sha256(base64(sha256(password + salt)) + challenge))
+inline std::string sha256_base64(const std::string& input) {
+    unsigned char hash[EVP_MAX_MD_SIZE];
+    unsigned int hash_len = 0;
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr);
+    EVP_DigestUpdate(ctx, input.data(), input.size());
+    EVP_DigestFinal_ex(ctx, hash, &hash_len);
+    EVP_MD_CTX_free(ctx);
+    return base64_encode(hash, hash_len);
+}
+
+class ObsClient {
+public:
+    ~ObsClient() { ws_.stop(); }
+
+    // Blocking. Throws std::runtime_error on any failure to connect/auth.
+    void connect(const std::string& host = "127.0.0.1", int port = 4455, const std::string& password = "") {
+        ws_.setUrl("ws://" + host + ":" + std::to_string(port));
+        ws_.disableAutomaticReconnection();
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        identified_ = false;
+        failed_ = false;
+        fail_reason_.clear();
+
+        ws_.setOnMessageCallback([this, password](const ix::WebSocketMessagePtr& msg) { on_message(msg, password); });
+        ws_.start();
+
+        if (!cv_.wait_for(lock, std::chrono::seconds(5), [&] { return identified_ || failed_; })) {
+            throw std::runtime_error("Таймаут подключения к OBS (obs-websocket на " + host + ":" + std::to_string(port) + ")");
+        }
+        if (failed_) {
+            throw std::runtime_error(fail_reason_.empty() ? "Не удалось подключиться к OBS" : fail_reason_);
+        }
+    }
+
+    void disconnect() { ws_.stop(); }
+
+    crow::json::rvalue request(const std::string& request_type, crow::json::wvalue request_data = crow::json::wvalue()) {
+        std::string request_id = std::to_string(++request_counter_);
+
+        crow::json::wvalue d;
+        d["requestType"] = request_type;
+        d["requestId"] = request_id;
+        d["requestData"] = std::move(request_data);
+        crow::json::wvalue frame;
+        frame["op"] = 6;
+        frame["d"] = std::move(d);
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        pending_.erase(request_id);
+        lock.unlock();
+        ws_.send(frame.dump());
+        lock.lock();
+
+        bool got = cv_.wait_for(lock, std::chrono::seconds(5), [&] { return pending_.count(request_id) > 0; });
+        if (!got) {
+            throw std::runtime_error("Таймаут ответа OBS на запрос " + request_type);
+        }
+        std::string raw = pending_[request_id];
+        pending_.erase(request_id);
+        lock.unlock();
+
+        auto parsed = crow::json::load(raw);
+        auto d_field = parsed["d"];
+        bool ok = d_field.has("requestStatus") && d_field["requestStatus"].has("result") && d_field["requestStatus"]["result"].b();
+        if (!ok) {
+            std::string comment = (d_field.has("requestStatus") && d_field["requestStatus"].has("comment"))
+                                       ? std::string(d_field["requestStatus"]["comment"].s())
+                                       : "unknown error";
+            throw std::runtime_error("OBS отклонил запрос " + request_type + ": " + comment);
+        }
+        return d_field["responseData"];
+    }
+
+    // Creates (or updates, if already present) two Browser Sources in the
+    // current scene: one for /chat, one for /events, sized to the canvas.
+    void ensure_browser_sources(int overlay_port) {
+        auto video = request("GetVideoSettings");
+        int width = static_cast<int>(video["baseWidth"].i());
+        int height = static_cast<int>(video["baseHeight"].i());
+
+        auto scenes = request("GetSceneList");
+        std::string scene_name = std::string(scenes["currentProgramSceneName"].s());
+
+        crow::json::wvalue list_req;
+        list_req["sceneName"] = scene_name;
+        auto items = request("GetSceneItemList", std::move(list_req));
+
+        auto has_source = [&](const std::string& name) {
+            for (const auto& item : items["sceneItems"]) {
+                if (item.has("sourceName") && std::string(item["sourceName"].s()) == name) return true;
+            }
+            return false;
+        };
+
+        ensure_one(scene_name, "StreamSoft Chat", "http://127.0.0.1:" + std::to_string(overlay_port) + "/chat", width,
+                   height, has_source("StreamSoft Chat"));
+        ensure_one(scene_name, "StreamSoft Alerts", "http://127.0.0.1:" + std::to_string(overlay_port) + "/events",
+                   width, height, has_source("StreamSoft Alerts"));
+    }
+
+private:
+    void ensure_one(const std::string& scene_name, const std::string& source_name, const std::string& url, int width,
+                     int height, bool already_exists) {
+        crow::json::wvalue settings;
+        settings["url"] = url;
+        settings["width"] = width;
+        settings["height"] = height;
+        settings["reroute_audio"] = false;
+        settings["shutdown"] = false; // "Shutdown source when not visible" — must stay off or the WS drops on scene switch
+
+        if (already_exists) {
+            crow::json::wvalue req;
+            req["inputName"] = source_name;
+            req["inputSettings"] = std::move(settings);
+            req["overlay"] = true;
+            request("SetInputSettings", std::move(req));
+            CROW_LOG_INFO << "OBS: обновлён источник " << source_name;
+        } else {
+            crow::json::wvalue req;
+            req["sceneName"] = scene_name;
+            req["inputName"] = source_name;
+            req["inputKind"] = "browser_source";
+            req["inputSettings"] = std::move(settings);
+            req["sceneItemEnabled"] = true;
+            request("CreateInput", std::move(req));
+            CROW_LOG_INFO << "OBS: создан источник " << source_name;
+        }
+    }
+
+    void on_message(const ix::WebSocketMessagePtr& msg, const std::string& password) {
+        try {
+            if (msg->type == ix::WebSocketMessageType::Error) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                failed_ = true;
+                fail_reason_ = "WebSocket ошибка: " + msg->errorInfo.reason;
+                cv_.notify_all();
+                return;
+            }
+            if (msg->type == ix::WebSocketMessageType::Close) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (!identified_) {
+                    failed_ = true;
+                    fail_reason_ = "Соединение с OBS закрыто до идентификации";
+                }
+                cv_.notify_all();
+                return;
+            }
+            if (msg->type != ix::WebSocketMessageType::Message) return;
+
+            auto payload = crow::json::load(msg->str);
+            if (!payload || !payload.has("op")) return;
+            int op = static_cast<int>(payload["op"].i());
+
+            if (op == 0) { // Hello
+                crow::json::wvalue identify;
+                identify["rpcVersion"] = 1;
+                identify["eventSubscriptions"] = 0;
+
+                if (payload["d"].has("authentication")) {
+                    if (password.empty()) {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        failed_ = true;
+                        fail_reason_ = "У OBS включён пароль на WebSocket-сервере, а он не задан";
+                        cv_.notify_all();
+                        return;
+                    }
+                    std::string challenge = std::string(payload["d"]["authentication"]["challenge"].s());
+                    std::string salt = std::string(payload["d"]["authentication"]["salt"].s());
+                    std::string secret = sha256_base64(password + salt);
+                    identify["authentication"] = sha256_base64(secret + challenge);
+                }
+
+                crow::json::wvalue frame;
+                frame["op"] = 1;
+                frame["d"] = std::move(identify);
+                ws_.send(frame.dump());
+            } else if (op == 2) { // Identified
+                std::lock_guard<std::mutex> lock(mutex_);
+                identified_ = true;
+                cv_.notify_all();
+            } else if (op == 7) { // RequestResponse
+                std::string request_id = std::string(payload["d"]["requestId"].s());
+                std::lock_guard<std::mutex> lock(mutex_);
+                pending_[request_id] = msg->str;
+                cv_.notify_all();
+            }
+        } catch (const std::exception& e) {
+            CROW_LOG_ERROR << "Не удалось обработать сообщение obs-websocket: " << e.what();
+        }
+    }
+
+    ix::WebSocket ws_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool identified_ = false;
+    bool failed_ = false;
+    std::string fail_reason_;
+    std::map<std::string, std::string> pending_;
+    std::atomic<int> request_counter_{0};
+};
+
+} // namespace streamsoft::obs

@@ -1,0 +1,38 @@
+# vcpkg сам инструмент и поставленные пакеты — не коммитим, ставится bootstrap-скриптом
+vcpkg/
+vcpkg_installed/
+
+# CMake / MSVC build output — не коммитим, пересобирается из исходников
+build/
+out/
+CMakeCache.txt
+CMakeFiles/
+*.vcxproj*
+*.sln
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Собранный инсталлятор (ISCC.exe installer\streamsoft.iss) — пересобирается
+# из build/gui/Release, не коммитим
+installer/Output/
+
+# Скачиваемые опциональные модули (embeddable Python + зависимости) — не часть кода
+adapters/*/vendor/
+adapters/*/python-embed/
+
+# Секреты — никогда не коммитить
+.env
+twitch_token.json
+connections.json
+
+# Qt SDK (прекомпилированный, тянется aqtinstall) и временное venv для него —
+# см. docs/BUILD.md за командой установки
+qt/
+.aqt-venv/
+
+# Рантайм-данные (создаются программой при первом запуске)
+runtime_settings.json
+chat_commands.json
+core/web/media/
