@@ -23,10 +23,16 @@ GlassCard {
     property int fileCount: 0
     property real bytesDownloaded: 0
     property real bytesTotal: 0
+    property string currentStep: ""
     property string errorMsg: ""
 
-    readonly property bool busy: state === "downloading" || state === "extracting"
-    readonly property real percent: bytesTotal > 0 ? (bytesDownloaded / bytesTotal) * 100 : 0
+    readonly property bool busy: state === "downloading" || state === "extracting" || state === "installing"
+    // "installing" (RVC's live pip install) has no byte-accurate progress —
+    // each pip/subprocess stage just advances fileIndex, so the bar shows
+    // coarse "step X of N" progress instead of a byte count there.
+    readonly property real percent: state === "installing"
+        ? (fileCount > 0 ? (fileIndex / fileCount) * 100 : 0)
+        : (bytesTotal > 0 ? (bytesDownloaded / bytesTotal) * 100 : 0)
 
     function refreshStatus() {
         api.get("/api/modules/" + moduleName + "/status", function (ok, data) {
@@ -49,6 +55,7 @@ GlassCard {
             root.fileCount = data.file_count || 0
             root.bytesDownloaded = data.bytes_downloaded || 0
             root.bytesTotal = data.bytes_total || 0
+            root.currentStep = data.current_step || ""
             root.errorMsg = data.error || ""
             if (root.state === "installed") root.installed = true
             if (root.state === "idle" || root.state === "installed" || root.state === "failed") root.refreshStatus()
@@ -120,9 +127,11 @@ GlassCard {
         Text {
             color: Theme.textDim
             font.pixelSize: Theme.fontMd
-            text: root.state === "extracting"
-                ? "Распаковка…"
-                : "Скачивание" + (root.fileCount > 1 ? " (часть " + root.fileIndex + " из " + root.fileCount + ")" : "") + "…"
+            text: {
+                if (root.state === "installing") return root.currentStep || "Установка…"
+                if (root.state === "extracting") return "Распаковка…"
+                return "Скачивание" + (root.fileCount > 1 ? " (часть " + root.fileIndex + " из " + root.fileCount + ")" : "") + "…"
+            }
         }
         Rectangle {
             Layout.fillWidth: true

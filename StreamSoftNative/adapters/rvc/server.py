@@ -10,10 +10,12 @@ from rvc_python.infer import RVCInference
 MODELS_DIR = str(Path(__file__).parent / "models")
 DEVICE = os.environ.get("RVC_DEVICE", "cuda:0")
 DEFAULT_MODEL = os.environ.get("RVC_DEFAULT_MODEL", "ayaka")
+DEFAULT_VERSION = os.environ.get("RVC_DEFAULT_VERSION", "v1")
 
 app = FastAPI()
 rvc: Optional[RVCInference] = None
 current_model_name: Optional[str] = None
+current_version: str = DEFAULT_VERSION
 
 
 @app.on_event("startup")
@@ -21,7 +23,7 @@ def startup() -> None:
     global rvc, current_model_name
     rvc = RVCInference(models_dir=MODELS_DIR, device=DEVICE)
     if DEFAULT_MODEL in rvc.list_models():
-        rvc.load_model(DEFAULT_MODEL)
+        rvc.load_model(DEFAULT_MODEL, version=DEFAULT_VERSION)
         current_model_name = DEFAULT_MODEL
 
 
@@ -37,11 +39,13 @@ def models() -> dict:
 
 @app.post("/load_model")
 async def load_model(request: Request) -> dict:
-    global current_model_name
+    global current_model_name, current_version
     body = await request.json()
     name = body["name"]
-    rvc.load_model(name)
+    version = body.get("version", "v1")
+    rvc.load_model(name, version=version)
     current_model_name = name
+    current_version = version
     return {"ok": True, "model": name}
 
 

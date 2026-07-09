@@ -7,6 +7,7 @@
 // implementation instead of drifting apart.
 
 #include "app_paths.hpp"
+#include "auto_update.hpp"
 #include "connections_config.hpp"
 #include "discord_presence.hpp"
 #include "outgoing_queue.hpp"
@@ -169,6 +170,9 @@ inline void run_core() {
             supervise("discord-presence", [] { discord::run_discord_presence(discord::kClientId, discord::kRepoUrl); });
         }).detach();
     }
+
+    // Always on, same as Discord presence above — not a per-user setting.
+    std::thread([] { supervise("auto-update", [] { run_auto_updater(); }); }).detach();
 
     for (auto& t : workers) t.detach();
 

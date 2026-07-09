@@ -18,6 +18,7 @@
 #define SourceRoot "..\build\gui\Release"
 #define WebSourceDir "..\core\web"
 #define CertsSourceDir "..\core\certs"
+#define AdaptersSourceDir "..\adapters"
 #define IconFile "..\gui\qml\assets\icons\app-icon.ico"
 
 [Setup]
@@ -25,6 +26,12 @@ AppId={{F3A6E6A0-6C3B-4A6E-9C7B-STREAMSOFT001}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+; Matches the CreateMutexW name in gui/main.cpp — lets Setup's Restart
+; Manager integration (see [Run]'s /CLOSEAPPLICATIONS in auto_update.hpp's
+; silent-update launch) detect and close the running app on its own, then
+; relaunch it after a background self-update, without any custom
+; shutdown-coordination code on our side.
+AppMutex=Global\StreamSoftNative_SingleInstance
 ; Per-user install, no admin/UAC prompt — everything this app touches
 ; (Registry autostart key, connections.json/etc. via
 ; ensure_writable_config_cwd()) is already per-user, so a machine-wide
@@ -64,6 +71,16 @@ Source: "{#SourceRoot}\*"; DestDir: "{app}"; Excludes: "*.log,*.exp,*.lib,*.pdb,
 Source: "{#WebSourceDir}\*.html"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#WebSourceDir}\static\*"; DestDir: "{app}\web\static"; Flags: recursesubdirs ignoreversion
 Source: "{#CertsSourceDir}\cacert.pem"; DestDir: "{app}\certs"; Flags: ignoreversion
+; Adapter *source* (server.py + requirements.txt, a few KB) ships with the
+; base install regardless of Check&Install — it's our own code, not the
+; heavy runtime (venv/torch/etc.) that gets fetched separately per-module.
+; RVC's live pip install (module_installer.hpp) needs server.py already
+; here before it ever runs; TTS's zip already contains its own copy too,
+; this is just a harmless duplicate for that one.
+Source: "{#AdaptersSourceDir}\tts\server.py"; DestDir: "{app}\adapters\tts"; Flags: ignoreversion
+Source: "{#AdaptersSourceDir}\tts\requirements.txt"; DestDir: "{app}\adapters\tts"; Flags: ignoreversion
+Source: "{#AdaptersSourceDir}\rvc\server.py"; DestDir: "{app}\adapters\rvc"; Flags: ignoreversion
+Source: "{#AdaptersSourceDir}\rvc\requirements.txt"; DestDir: "{app}\adapters\rvc"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{userappdata}\{#MyAppName}"

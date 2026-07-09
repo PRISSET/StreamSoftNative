@@ -100,6 +100,9 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_CACERT_PATH="${CMAKE_SOURCE_DIR}/core/certs/cacert.pem"
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
+    # Kept in sync by hand with installer/streamsoft.iss's MyAppVersion —
+    # auto_update.hpp compares this against GitHub Releases' latest tag.
+    STREAMSOFT_VERSION="0.1.0"
     # Qt's signals/slots/emit macros collide with unrelated identifiers in
     # third-party headers now linked into this target — Crow has a method
     # literally named signals(), which Qt's macro mangles into `public()`

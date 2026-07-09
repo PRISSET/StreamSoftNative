@@ -21,6 +21,12 @@ installer/Output/
 # Скачиваемые опциональные модули (embeddable Python + зависимости) — не часть кода
 adapters/*/vendor/
 adapters/*/python-embed/
+# RVC's live pip-install (module_installer.hpp) — embeddable Python + venv +
+# downloaded voice model, all fetched per-machine at install time, same idea
+# as vendor/ above just under a different name for the live-install path.
+adapters/*/venv/
+adapters/*/models/
+adapters/*/.streamsoft_installed
 
 # Временные скачивания module_installer.hpp (см. run_module_install) —
 # создаются рядом с adapters/<name>/, а не внутри неё, так и не удаляются

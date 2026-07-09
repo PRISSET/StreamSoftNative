@@ -470,18 +470,20 @@ private:
             static constexpr std::uint64_t kRvcRequiredDiskMb = 8192;
 
             auto gpu = streamsoft::check_gpu_for_rvc();
+            auto cuda = streamsoft::detect_cuda_wheel_tag();
             auto disk = streamsoft::check_disk_space(streamsoft::rvc_module_manifest().install_dir, kRvcRequiredDiskMb);
 
             crow::json::wvalue resp;
-            resp["cuda_capable"] = gpu.cuda_capable;
+            resp["cuda_capable"] = gpu.cuda_capable && cuda.available;
             resp["gpu_name"] = gpu.gpu_name;
             resp["vram_mb"] = gpu.vram_mb;
-            resp["gpu_reason"] = gpu.reason;
+            resp["gpu_reason"] = !gpu.cuda_capable ? gpu.reason : cuda.reason;
+            resp["cuda_wheel_tag"] = cuda.tag;
             resp["disk_ok"] = disk.ok;
             resp["disk_free_mb"] = disk.free_mb;
             resp["disk_required_mb"] = kRvcRequiredDiskMb;
             resp["disk_reason"] = disk.reason;
-            resp["ready"] = gpu.cuda_capable && disk.ok;
+            resp["ready"] = gpu.cuda_capable && cuda.available && disk.ok;
             return crow::response(resp.dump());
         });
 
@@ -506,9 +508,10 @@ private:
 
             if (manifest->requires_gpu) {
                 auto gpu = streamsoft::check_gpu_for_rvc();
+                auto cuda = streamsoft::detect_cuda_wheel_tag();
                 auto disk = streamsoft::check_disk_space(manifest->install_dir, manifest->required_disk_mb);
-                resp["requirements_met"] = gpu.cuda_capable && disk.ok;
-                resp["requirements_reason"] = !gpu.cuda_capable ? gpu.reason : disk.reason;
+                resp["requirements_met"] = gpu.cuda_capable && cuda.available && disk.ok;
+                resp["requirements_reason"] = !gpu.cuda_capable ? gpu.reason : (!cuda.available ? cuda.reason : disk.reason);
             } else {
                 auto disk = streamsoft::check_disk_space(manifest->install_dir, manifest->required_disk_mb);
                 resp["requirements_met"] = disk.ok;
@@ -545,6 +548,7 @@ private:
             resp["file_count"] = progress.file_count;
             resp["bytes_downloaded"] = progress.bytes_downloaded;
             resp["bytes_total"] = progress.bytes_total;
+            resp["current_step"] = progress.current_step;
             if (progress.state == streamsoft::ModuleInstallState::Failed) resp["error"] = progress.error;
             return crow::response(resp.dump());
         });
