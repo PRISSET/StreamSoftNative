@@ -1,6 +1,8 @@
+<div align="center">
 <img src="docs/icon.png" width="96" height="96" alt="StreamSoft">
 
 # StreamSoft
+</div>
 
 Нативный стрим-ассистент для Windows: чат из Twitch и YouTube, алерты, оверлей для
 OBS, озвучка сообщений, смена голоса — без Python, без консоли, без ручной настройки
@@ -18,9 +20,16 @@ Browser Source.
 
 ## Скриншоты
 
-| Оверлей и превью | Настройки внешнего вида |
-| --- | --- |
-| ![Оверлей](docs/screenshots/overlay.png) | ![Настройки](docs/screenshots/settings.png) |
+<table>
+<tr>
+<th>Оверлей и превью</th>
+<th>Настройки внешнего вида</th>
+</tr>
+<tr>
+<td><img src="docs/screenshots/overlay.png" width="480" alt="Оверлей"></td>
+<td><img src="docs/screenshots/settings.png" width="480" alt="Настройки"></td>
+</tr>
+</table>
 
 ## Установка
 
