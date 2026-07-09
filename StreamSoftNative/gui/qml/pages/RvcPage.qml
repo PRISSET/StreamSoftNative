@@ -69,7 +69,7 @@ ColumnLayout {
                 color: root.rvcAvailable ? Theme.good : "#55555c"
             }
             Text {
-                text: root.rvcAvailable ? "RVC-сервис доступен" : "RVC-сервис недоступен (запусти rvc_service/start.bat)"
+                text: root.rvcAvailable ? "RVC-сервис доступен" : "RVC-сервис недоступен — приложение запускает его само, подождите пару секунд после установки"
                 color: Theme.textFaint
                 font.pixelSize: Theme.fontMd
             }

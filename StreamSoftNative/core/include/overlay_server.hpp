@@ -1,6 +1,7 @@
 #pragma once
 
 #include <crow.h>
+#include <httplib.h>
 
 #include <array>
 #include <deque>
@@ -54,6 +55,12 @@ public:
     // changes from the GUI (voice/rate/say_author) apply immediately, same
     // as overlay_server.py calling self._tts.set_voice_ru() etc. inline.
     void set_tts_worker(tts::TtsWorker* tts) { tts_ = tts; }
+
+    // Set once at startup (and again whenever the RVC adapter gets launched
+    // after a fresh Check&Install, see core_app.hpp) — 0 means "adapter not
+    // running", in which case /api/rvc/health degrades to available:false
+    // instead of trying to reach a nonexistent port.
+    void set_rvc_port(int port) { rvc_port_ = port; }
 
     void broadcast_chat(const std::string& platform, const std::string& author, const std::string& text) {
         crow::json::wvalue payload;
@@ -443,17 +450,41 @@ private:
     }
 
     void setup_rvc_routes() {
-        // RVC adapter isn't wired up yet — degrade gracefully like the
-        // Python UI already expects ("RVC-сервис недоступен").
+        // Real proxy to the adapter core launched itself (see
+        // rvc_launcher.hpp / core_app.hpp) — degrades to available:false if
+        // the adapter isn't installed/running yet, same graceful-degrade
+        // contract as TTS (CLAUDE.md §4), instead of failing the whole app.
         CROW_ROUTE(app_, "/api/rvc/health")
-        ([] {
+        ([this] {
             crow::json::wvalue resp;
-            resp["available"] = false;
+            if (rvc_port_ == 0) {
+                resp["available"] = false;
+                return crow::response(resp.dump());
+            }
+            httplib::Client cli("http://127.0.0.1:" + std::to_string(rvc_port_));
+            cli.set_connection_timeout(1);
+            cli.set_read_timeout(3);
+            auto r = cli.Get("/health");
+            if (!r || r->status != 200) {
+                resp["available"] = false;
+                return crow::response(resp.dump());
+            }
+            auto data = crow::json::load(r->body);
+            resp["available"] = true;
+            resp["device"] = data && data.has("device") ? std::string(data["device"].s()) : "";
+            resp["model"] = data && data.has("model") ? std::string(data["model"].s()) : "";
             return crow::response(resp.dump());
         });
 
         CROW_ROUTE(app_, "/api/rvc/models")
-        ([] {
+        ([this] {
+            if (rvc_port_ != 0) {
+                httplib::Client cli("http://127.0.0.1:" + std::to_string(rvc_port_));
+                cli.set_connection_timeout(1);
+                cli.set_read_timeout(3);
+                auto r = cli.Get("/models");
+                if (r && r->status == 200) return crow::response(r->body);
+            }
             crow::json::wvalue resp;
             resp["models"] = std::vector<crow::json::wvalue>{};
             return crow::response(resp.dump());
@@ -657,6 +688,7 @@ private:
     ModerationState moderation_;
     CommandsStore commands_;
     tts::TtsWorker* tts_ = nullptr;
+    int rvc_port_ = 0;
 
     std::mutex connections_mutex_;
 

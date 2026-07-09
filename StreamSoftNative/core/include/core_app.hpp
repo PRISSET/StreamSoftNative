@@ -13,6 +13,7 @@
 #include "outgoing_queue.hpp"
 #include "overlay_server.hpp"
 #include "runtime_settings.hpp"
+#include "rvc_launcher.hpp"
 #include "telegram.hpp"
 #include "tts_launcher.hpp"
 #include "tts_worker.hpp"
@@ -23,6 +24,7 @@
 #include <crow/logging.h>
 #include <chrono>
 #include <functional>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -77,6 +79,37 @@ inline void run_core() {
     auto tts_process = tts::start(kTtsPort);
     tts.start();
     overlay.set_tts_worker(&tts);
+
+    constexpr int kRvcPort = 8103;
+    auto rvc_process = rvc::start(kRvcPort);
+    if (rvc_process.running) overlay.set_rvc_port(kRvcPort);
+
+    // Guards tts_process/rvc_process against the race between a background
+    // Check&Install thread's "just finished" callback (below) writing a
+    // freshly-started AdapterProcess into these and this thread reading them
+    // again at shutdown (tts::stop()/rvc::stop() at the very end of this
+    // function).
+    std::mutex adapter_mutex;
+
+    // Lets a module installed *after* this app already started actually
+    // come alive right away — without this hook, the adapter subprocess
+    // above never got spawned (is_installed() was false at that point), and
+    // nothing else would ever retry it short of a full app restart.
+    set_module_installed_callback("tts", [&tts_process, &adapter_mutex, kTtsPort] {
+        std::lock_guard<std::mutex> lock(adapter_mutex);
+        if (tts_process.running) return;
+        tts_process = tts::start(kTtsPort);
+        if (tts_process.running) CROW_LOG_INFO << "TTS-адаптер поднят сразу после установки, без перезапуска";
+    });
+    set_module_installed_callback("rvc", [&rvc_process, &overlay, &adapter_mutex, kRvcPort] {
+        std::lock_guard<std::mutex> lock(adapter_mutex);
+        if (rvc_process.running) return;
+        rvc_process = rvc::start(kRvcPort);
+        if (rvc_process.running) {
+            overlay.set_rvc_port(kRvcPort);
+            CROW_LOG_INFO << "RVC-адаптер поднят сразу после установки, без перезапуска";
+        }
+    });
 
     std::vector<std::thread> workers;
 
@@ -177,7 +210,10 @@ inline void run_core() {
     for (auto& t : workers) t.detach();
 
     overlay.run(); // blocking
+
+    std::lock_guard<std::mutex> lock(adapter_mutex);
     tts::stop(tts_process);
+    rvc::stop(rvc_process);
 }
 
 } // namespace streamsoft

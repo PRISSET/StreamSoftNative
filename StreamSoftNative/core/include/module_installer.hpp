@@ -130,6 +130,38 @@ inline const ModuleManifest* find_module_manifest(const std::string& name) {
     return nullptr;
 }
 
+// Lets core_app.hpp hook "a module just finished installing" to actually
+// launch that adapter's subprocess right away — without this, a module
+// installed after the app already started stays dark until the next full
+// restart, since core_app.hpp otherwise only spawns adapters once at
+// startup. One callback per module name is enough (core_app.hpp registers
+// exactly one for "tts" and one for "rvc" during its own setup). Same
+// lazy-registry shape as module_progress() above, just holding callbacks
+// instead of progress state.
+inline std::map<std::string, std::function<void()>>& module_installed_callbacks() {
+    static std::map<std::string, std::function<void()>> registry;
+    return registry;
+}
+inline std::mutex& module_installed_callbacks_mutex() {
+    static std::mutex m;
+    return m;
+}
+
+inline void set_module_installed_callback(const std::string& name, std::function<void()> cb) {
+    std::lock_guard<std::mutex> lock(module_installed_callbacks_mutex());
+    module_installed_callbacks()[name] = std::move(cb);
+}
+
+inline void fire_module_installed_callback(const std::string& name) {
+    std::function<void()> cb;
+    {
+        std::lock_guard<std::mutex> lock(module_installed_callbacks_mutex());
+        auto it = module_installed_callbacks().find(name);
+        if (it != module_installed_callbacks().end()) cb = it->second;
+    }
+    if (cb) cb();
+}
+
 enum class ModuleInstallState {
     Idle,
     Downloading,
@@ -646,6 +678,7 @@ inline void run_module_install(ModuleManifest manifest) {
 
     set_state(ModuleInstallState::Installed);
     CROW_LOG_INFO << "Модуль " << manifest.name << " успешно установлен";
+    fire_module_installed_callback(manifest.name);
 }
 
 // Fire-and-forget: REST handler calls this and returns immediately, the GUI
