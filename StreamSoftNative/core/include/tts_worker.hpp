@@ -139,9 +139,14 @@ private:
     void run() {
         // Needed for AudioDucker's MMDevice/COM calls below — this thread
         // never touches COM otherwise (MCI playback doesn't need it), so
-        // nothing initialized it yet. Lives for the thread's whole
-        // lifetime, same as the rest of this worker's state.
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        // nothing initialized it yet. MTA, not STA: this thread has no
+        // Windows message pump (it's a plain condition-variable loop), and
+        // STA COM calls can rely on message delivery for RPC completion —
+        // without a pump, a call into the audio engine can stall the
+        // apartment indefinitely. Core Audio's interfaces are documented as
+        // agile ("Both"), so MTA is the correct/recommended choice for
+        // exactly this kind of pump-less worker thread.
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
         while (true) {
             QueueItem item;
@@ -156,6 +161,17 @@ private:
             } catch (const std::exception& e) {
                 CROW_LOG_ERROR << "Ошибка озвучки: " << e.what();
             }
+
+            // Only restore once nothing else is queued — duck()'s own
+            // ducked_ guard already skips the (relatively heavy) session
+            // enumeration for consecutive queued lines, but that only
+            // helped if something wasn't undoing it between every single
+            // line. Restoring here instead of unconditionally after every
+            // speak() means a fast-moving chat ducks once per burst, not
+            // once per message (fewer audible blips, and far less traffic
+            // through the audio engine's session APIs).
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (queue_.empty()) ducker_.restore();
         }
     }
 
@@ -250,17 +266,12 @@ private:
             f << audio;
         }
 
-        // Captured once, not re-read from the atomic after play_blocking()
-        // returns: toggling the setting off mid-line used to make the
-        // restore() call see a different value than the duck() call did,
-        // so a message that started ducked could finish with restore()
-        // skipped — every app stayed quiet forever, with no way to
-        // recover short of restarting StreamSoft.
-        bool should_duck = ducking_enabled_.load();
-        int duck_percent = ducking_percent_.load();
-        if (should_duck) ducker_.duck(duck_percent);
+        // restore() happens in run(), once the queue is actually empty —
+        // see the comment there. Only duck() here; toggling the setting off
+        // mid-line just means this was the last line to duck for, run()'s
+        // restore() call (unconditional, idempotent) still cleans it up.
+        if (ducking_enabled_) ducker_.duck(ducking_percent_.load());
         play_blocking(path, is_wav ? "waveaudio" : "mpegvideo");
-        if (should_duck) ducker_.restore();
         DeleteFileA(path.c_str());
     }
 
