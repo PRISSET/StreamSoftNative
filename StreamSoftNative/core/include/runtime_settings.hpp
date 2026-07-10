@@ -31,6 +31,20 @@ struct RuntimeSettings {
     double rvc_protect = 0.5;
     std::string rvc_f0method = "rmvpe";
 
+    // Lowers every other app's audio session volume while a TTS/RVC line is
+    // playing (see audio_ducking.hpp), same "duck the game while someone
+    // talks" behavior OBS/Streamlabs/NVIDIA Broadcast all have.
+    bool ducking_enabled = false;
+    int ducking_percent = 30; // other apps drop to this % of their current volume
+
+    // Own points economy (see points.hpp) — not Twitch Channel Points,
+    // deliberately independent so it needs no extra Twitch API scope or
+    // broadcaster-side reward setup. Viewers earn points by chatting,
+    // spend them on !song requests.
+    bool song_requests_enabled = false;
+    int song_request_cost = 50;
+    int song_request_volume = 80; // 0-100, applied to the YouTube/SoundCloud embed player in /nowplaying
+
     static constexpr const char* kFile = "runtime_settings.json";
 
     static RuntimeSettings load() {
@@ -63,6 +77,13 @@ struct RuntimeSettings {
         if (j.has("rvc_protect")) s.rvc_protect = j["rvc_protect"].d();
         if (j.has("rvc_f0method")) s.rvc_f0method = std::string(j["rvc_f0method"].s());
 
+        if (j.has("ducking_enabled")) s.ducking_enabled = j["ducking_enabled"].b();
+        if (j.has("ducking_percent")) s.ducking_percent = static_cast<int>(j["ducking_percent"].i());
+
+        if (j.has("song_requests_enabled")) s.song_requests_enabled = j["song_requests_enabled"].b();
+        if (j.has("song_request_cost")) s.song_request_cost = static_cast<int>(j["song_request_cost"].i());
+        if (j.has("song_request_volume")) s.song_request_volume = static_cast<int>(j["song_request_volume"].i());
+
         return s;
     }
 
@@ -86,6 +107,13 @@ struct RuntimeSettings {
         j["rvc_index_rate"] = rvc_index_rate;
         j["rvc_protect"] = rvc_protect;
         j["rvc_f0method"] = rvc_f0method;
+
+        j["ducking_enabled"] = ducking_enabled;
+        j["ducking_percent"] = ducking_percent;
+
+        j["song_requests_enabled"] = song_requests_enabled;
+        j["song_request_cost"] = song_request_cost;
+        j["song_request_volume"] = song_request_volume;
         return j;
     }
 

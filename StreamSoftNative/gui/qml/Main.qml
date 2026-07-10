@@ -221,6 +221,7 @@ ApplicationWindow {
             overlayPage.applySettings(data)
             voicePage.applySettings(data)
             mutedPage.applySettings(data)
+            musicPage.applySettings(data)
         })
     }
 
@@ -260,7 +261,7 @@ ApplicationWindow {
                 }
 
                 Repeater {
-                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Замьюченные", "Настройки", "Обновления"]
+                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Опрос", "Музыка", "Замьюченные", "Настройки", "Обновления"]
                     delegate: NavButton {
                         required property string modelData
                         required property int index
@@ -312,6 +313,8 @@ ApplicationWindow {
                 VoicePage { id: voicePage; width: pageStack.width }
                 AlertsPage { id: alertsPage; width: pageStack.width }
                 CommandsPage { id: commandsPage; width: pageStack.width }
+                PollPage { id: pollPage; width: pageStack.width }
+                MusicPage { id: musicPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }

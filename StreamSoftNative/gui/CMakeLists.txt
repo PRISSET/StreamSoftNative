@@ -53,6 +53,8 @@ qt_add_qml_module(streamsoft_gui
         qml/pages/VoicePage.qml
         qml/pages/AlertsPage.qml
         qml/pages/CommandsPage.qml
+        qml/pages/PollPage.qml
+        qml/pages/MusicPage.qml
         qml/pages/MutedPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/UpdatesPage.qml
@@ -102,7 +104,7 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
     # Kept in sync by hand with installer/streamsoft.iss's MyAppVersion —
     # auto_update.hpp compares this against GitHub Releases' latest tag.
-    STREAMSOFT_VERSION="1.0.3"
+    STREAMSOFT_VERSION="1.0.4"
     # Qt's signals/slots/emit macros collide with unrelated identifiers in
     # third-party headers now linked into this target — Crow has a method
     # literally named signals(), which Qt's macro mangles into `public()`

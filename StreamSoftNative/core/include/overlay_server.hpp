@@ -22,6 +22,10 @@
 #include "module_installer.hpp"
 #include "obs_client.hpp"
 #include "obs_scene_file.hpp"
+#include "outgoing_queue.hpp"
+#include "points.hpp"
+#include "poll.hpp"
+#include "song_queue.hpp"
 #include "runtime_settings.hpp"
 #include "tts_worker.hpp"
 #include "twitch_auth.hpp"
@@ -51,6 +55,143 @@ public:
     ModerationState& moderation() { return moderation_; }
 
     std::optional<std::string> match_command(const std::string& text) { return commands_.match(text); }
+
+    // Called from the Twitch/YouTube chat callbacks *before* the normal
+    // broadcast_chat/TTS path — a successful vote is consumed silently
+    // (see poll.hpp's try_vote() comment) instead of showing up as a
+    // regular chat line.
+    bool try_poll_vote(const std::string& username, const std::string& text) {
+        bool voted = poll_.try_vote(username, text);
+        if (voted) broadcast_poll_update();
+        return voted;
+    }
+
+    void broadcast_poll_update() {
+        auto payload = poll_.status();
+        payload["type"] = "poll";
+        broadcast_raw(payload.dump());
+    }
+
+    // One point per qualifying chat message — called from the normal
+    // (non-vote, non-song-request) chat path in core_app.hpp.
+    void award_points_for_message(const std::string& username) { points_.award_for_message(username); }
+
+    // Set once at startup from ConnectionsConfig::twitch_channel — the
+    // streamer's own messages come through the exact same IRC feed as
+    // everyone else's (Twitch echoes your own chat back to you), so without
+    // this the broadcaster would need to farm their own points before their
+    // own "!song" works. Case-insensitive since Twitch usernames are.
+    void set_broadcaster_name(const std::string& name) { broadcaster_name_ = name; }
+
+    // Set once from core_app.hpp after the queue is constructed — lets
+    // try_builtin_command()'s "!help"/"!points" replies and the periodic
+    // points/song reminder (see song_reminder_text()) actually reach Twitch
+    // chat the same way try_song_request()'s replies do. YouTube has no
+    // outgoing channel at all (read-only worker), so these two features are
+    // Twitch-only until that changes.
+    void set_twitch_outgoing(OutgoingQueue* queue) { twitch_outgoing_ = queue; }
+    OutgoingQueue* twitch_outgoing() const { return twitch_outgoing_; }
+
+    // Small always-on informational commands, checked before !song/chat
+    // commands — "!help" so viewers can discover !song/!points/poll voting
+    // without having to be told, "!points" so they can check their balance
+    // without waiting for the periodic reminder. std::nullopt means it
+    // wasn't one of these, so normal chat handling should proceed.
+    std::optional<std::string> try_builtin_command(const std::string& username, const std::string& text) {
+        std::string lower = trim(text);
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        if (lower == "!points" || lower == "!баллы") {
+            return username + ", у тебя " + std::to_string(points_.balance(username)) + " баллов";
+        }
+
+        if (lower == "!help" || lower == "!помощь") {
+            bool song_enabled;
+            int cost;
+            {
+                std::lock_guard<std::mutex> lock(runtime_mutex_);
+                song_enabled = runtime_.song_requests_enabled;
+                cost = runtime_.song_request_cost;
+            }
+            std::string help = "Команды: !points — баланс баллов. Во время опроса — !1, !2 и т.д. — проголосовать.";
+            if (song_enabled) {
+                help += " !song <ссылка YouTube/SoundCloud> — заказать музыку (" + std::to_string(cost) + " баллов).";
+            }
+            return help;
+        }
+
+        return std::nullopt;
+    }
+
+    // Called from a background timer in core_app.hpp — nullopt means "don't
+    // send anything this round" (feature currently off), so the reminder
+    // just quietly skips instead of advertising something disabled. Kept to
+    // a long interval by the caller specifically so this never reads as spam.
+    std::optional<std::string> song_reminder_text() {
+        std::lock_guard<std::mutex> lock(runtime_mutex_);
+        if (!runtime_.song_requests_enabled) return std::nullopt;
+        return "Пиши в чат — получаешь баллы за активность! На них можно заказать музыку: !song <ссылка "
+               "YouTube/SoundCloud> (" +
+               std::to_string(runtime_.song_request_cost) + " баллов). Проверить баланс — !points";
+    }
+
+    // "!song <link>" — returns a reply string on any outcome (added to
+    // queue, rejected for a bad link, rejected for insufficient points) so
+    // callers can push it back to Twitch chat the same way match_command()
+    // replies do; std::nullopt means the message wasn't a song request at
+    // all (feature off, or doesn't start with "!song "), so normal chat
+    // handling should proceed as usual.
+    std::optional<std::string> try_song_request(const std::string& username, const std::string& text) {
+        static const std::string kPrefix = "!song ";
+
+        std::string trimmed = trim(text);
+        if (trimmed.size() <= kPrefix.size()) return std::nullopt;
+        std::string prefix_lower = trimmed.substr(0, kPrefix.size());
+        std::transform(prefix_lower.begin(), prefix_lower.end(), prefix_lower.begin(), ::tolower);
+        if (prefix_lower != kPrefix) return std::nullopt;
+
+        bool enabled;
+        int cost;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.song_requests_enabled;
+            cost = runtime_.song_request_cost;
+        }
+        if (!enabled) return std::nullopt;
+
+        std::string url = trimmed.substr(kPrefix.size());
+        auto parsed = parse_song_link(url);
+        if (!parsed.valid) {
+            return std::string("Не похоже на ссылку YouTube или SoundCloud");
+        }
+
+        bool is_broadcaster = !broadcaster_name_.empty() && iequals(username, broadcaster_name_);
+        if (!is_broadcaster && !points_.spend(username, cost)) {
+            return "Недостаточно баллов (нужно " + std::to_string(cost) + ", у тебя " +
+                   std::to_string(points_.balance(username)) + ")";
+        }
+
+        bool was_empty = !song_queue_.has_current();
+        song_queue_.enqueue({parsed.platform, parsed.ref, username});
+        if (was_empty) song_queue_.advance();
+        broadcast_now_playing();
+
+        return is_broadcaster ? std::string("Добавлено в очередь!")
+                               : "Добавлено в очередь! Осталось баллов: " + std::to_string(points_.balance(username));
+    }
+
+    void broadcast_now_playing() { broadcast_raw(now_playing_payload().dump()); }
+
+    // Shared by the broadcast path and the WS onopen greeting so a freshly
+    // connecting /nowplaying page and a live one always agree on volume —
+    // song_queue_.status() alone doesn't know about runtime_ settings.
+    crow::json::wvalue now_playing_payload() {
+        auto payload = song_queue_.status();
+        payload["type"] = "now_playing";
+        std::lock_guard<std::mutex> lock(runtime_mutex_);
+        payload["volume"] = runtime_.song_request_volume;
+        return payload;
+    }
 
     // Set once from main() after the TTS worker exists — lets live settings
     // changes from the GUI (voice/rate/say_author) apply immediately, same
@@ -114,6 +255,19 @@ private:
                s.find('\\') == std::string::npos;
     }
 
+    static bool iequals(const std::string& a, const std::string& b) {
+        if (a.size() != b.size()) return false;
+        return std::equal(a.begin(), a.end(), b.begin(),
+                           [](unsigned char x, unsigned char y) { return ::tolower(x) == ::tolower(y); });
+    }
+
+    static std::string trim(const std::string& s) {
+        auto not_space = [](unsigned char c) { return !std::isspace(c); };
+        auto start = std::find_if(s.begin(), s.end(), not_space);
+        auto end = std::find_if(s.rbegin(), s.rend(), not_space).base();
+        return start < end ? std::string(start, end) : std::string();
+    }
+
     void setup_routes() {
         CROW_ROUTE(app_, "/")
         ([this] { return serve_file(web_dir_, "index.html"); });
@@ -123,6 +277,12 @@ private:
 
         CROW_ROUTE(app_, "/events")
         ([this] { return serve_file(web_dir_, "events.html"); });
+
+        CROW_ROUTE(app_, "/poll")
+        ([this] { return serve_file(web_dir_, "poll.html"); });
+
+        CROW_ROUTE(app_, "/nowplaying")
+        ([this] { return serve_file(web_dir_, "nowplaying.html"); });
 
         CROW_ROUTE(app_, "/static/<string>")
         ([this](const std::string& filename) {
@@ -142,6 +302,8 @@ private:
         setup_rvc_routes();
         setup_modules_routes();
         setup_updates_routes();
+        setup_poll_routes();
+        setup_songqueue_routes();
         setup_obs_routes();
         setup_connections_routes();
         setup_test_routes();
@@ -300,6 +462,7 @@ private:
                 auto body = crow::json::load(req.body);
                 if (!body) return crow::response(400, R"({"ok": false, "error": "bad json"})");
 
+                bool song_volume_touched = false;
                 {
                     std::lock_guard<std::mutex> lock(runtime_mutex_);
                     if (body.has("theme")) runtime_.theme = std::string(body["theme"].s());
@@ -350,11 +513,30 @@ private:
                         tts_->set_rvc_settings(runtime_.rvc_enabled, runtime_.rvc_scope, runtime_.rvc_pitch,
                                                 runtime_.rvc_index_rate, runtime_.rvc_protect, runtime_.rvc_f0method);
                     }
+
+                    bool ducking_touched = false;
+                    if (body.has("ducking_enabled")) { runtime_.ducking_enabled = body["ducking_enabled"].b(); ducking_touched = true; }
+                    if (body.has("ducking_percent")) { runtime_.ducking_percent = static_cast<int>(body["ducking_percent"].i()); ducking_touched = true; }
+                    if (ducking_touched && tts_) tts_->set_ducking(runtime_.ducking_enabled, runtime_.ducking_percent);
+
+                    if (body.has("song_requests_enabled")) runtime_.song_requests_enabled = body["song_requests_enabled"].b();
+                    if (body.has("song_request_cost")) runtime_.song_request_cost = static_cast<int>(body["song_request_cost"].i());
+                    if (body.has("song_request_volume")) {
+                        int v = static_cast<int>(body["song_request_volume"].i());
+                        runtime_.song_request_volume = std::max(0, std::min(100, v));
+                        song_volume_touched = true;
+                    }
+
                     runtime_.save();
                 }
 
                 if (body.has("mute")) moderation_.mute(std::string(body["mute"].s()));
                 if (body.has("unmute")) moderation_.unmute(std::string(body["unmute"].s()));
+
+                // Lets a volume change apply to whatever's already playing in
+                // /nowplaying immediately, instead of waiting for the next
+                // track to pick up the new value.
+                if (song_volume_touched) broadcast_now_playing();
 
                 broadcast_config();
 
@@ -621,6 +803,83 @@ private:
         });
     }
 
+    void setup_poll_routes() {
+        CROW_ROUTE(app_, "/api/poll/start")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                if (!body || !body.has("question") || !body.has("options")) {
+                    return crow::response(400, R"({"ok": false, "error": "question/options required"})");
+                }
+                std::string question = std::string(body["question"].s());
+                std::vector<std::string> options;
+                for (const auto& o : body["options"]) options.push_back(std::string(o.s()));
+                if (question.empty() || options.size() < 2 || options.size() > 9) {
+                    return crow::response(400, R"({"ok": false, "error": "need 2-9 options"})");
+                }
+                poll_.start(question, options);
+                broadcast_poll_update();
+
+                // Viewers only know !1/!2 vote syntax if we tell them —
+                // announced once here rather than repeated per-vote, so it
+                // doesn't turn into chat noise while the poll is running.
+                if (twitch_outgoing_) {
+                    std::string announcement = "Опрос: " + question + " — голосуй в чате: ";
+                    for (size_t i = 0; i < options.size(); ++i) {
+                        if (i > 0) announcement += ", ";
+                        announcement += "!" + std::to_string(i + 1) + " (" + options[i] + ")";
+                    }
+                    twitch_outgoing_->push(announcement);
+                }
+
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/poll/stop")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
+                poll_.stop();
+                broadcast_poll_update();
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/poll/status")
+        ([this] {
+            crow::json::wvalue resp = poll_.status();
+            resp["ok"] = true;
+            return crow::response(resp.dump());
+        });
+    }
+
+    void setup_songqueue_routes() {
+        CROW_ROUTE(app_, "/api/points")
+        ([this] {
+            crow::json::wvalue resp;
+            resp["ok"] = true;
+            resp["leaderboard"] = points_.leaderboard();
+            return crow::response(resp.dump());
+        });
+
+        CROW_ROUTE(app_, "/api/songqueue/status")
+        ([this] {
+            crow::json::wvalue resp = song_queue_.status();
+            resp["ok"] = true;
+            return crow::response(resp.dump());
+        });
+
+        CROW_ROUTE(app_, "/api/songqueue/skip")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
+                song_queue_.advance();
+                broadcast_now_playing();
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/songqueue/clear")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
+                song_queue_.clear();
+                broadcast_now_playing();
+                return crow::response(R"({"ok": true})");
+            });
+    }
+
     void setup_test_routes() {
         CROW_ROUTE(app_, "/api/test-chat")
             .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
@@ -641,6 +900,39 @@ private:
                 return crow::response(R"({"ok": true})");
             });
 
+        // Exercises try_song_request() end-to-end (points spend + link
+        // parsing + queue) the same way a real chat message would, without
+        // needing a live Twitch/YouTube connection to trigger it.
+        CROW_ROUTE(app_, "/api/test-song")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string username = (body && body.has("username")) ? std::string(body["username"].s()) : "TestUser";
+                std::string text = (body && body.has("text")) ? std::string(body["text"].s()) : "";
+                auto reply = try_song_request(username, text);
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                resp["consumed"] = reply.has_value();
+                if (reply) resp["reply"] = *reply;
+                return crow::response(resp.dump());
+            });
+
+        // Exercises try_builtin_command() (!help, !points) without needing a
+        // live chat connection — mirrors /api/test-song. Deliberately never
+        // touches twitch_outgoing_, so this can't post to real chat even
+        // while a real Twitch connection is live.
+        CROW_ROUTE(app_, "/api/test-command")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string username = (body && body.has("username")) ? std::string(body["username"].s()) : "TestUser";
+                std::string text = (body && body.has("text")) ? std::string(body["text"].s()) : "";
+                auto reply = try_builtin_command(username, text);
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                resp["consumed"] = reply.has_value();
+                if (reply) resp["reply"] = *reply;
+                return crow::response(resp.dump());
+            });
+
         CROW_ROUTE(app_, "/api/test-event")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -659,6 +951,12 @@ private:
                 }
                 conn.send_text(config_payload().dump());
 
+                crow::json::wvalue poll_payload = poll_.status();
+                poll_payload["type"] = "poll";
+                conn.send_text(poll_payload.dump());
+
+                conn.send_text(now_playing_payload().dump());
+
                 std::lock_guard<std::mutex> lock(history_mutex_);
                 for (const auto& msg : chat_history_) {
                     conn.send_text(msg);
@@ -668,8 +966,16 @@ private:
                 std::lock_guard<std::mutex> lock(clients_mutex_);
                 clients_.erase(&conn);
             })
-            .onmessage([](crow::websocket::connection&, const std::string&, bool) {
-                // Оверлей ничего не шлёт серверу — принимаем и игнорируем.
+            .onmessage([this](crow::websocket::connection&, const std::string& text, bool) {
+                // The only overlay page that actually sends anything back:
+                // nowplaying.html's YouTube/SoundCloud embed players report
+                // "song_ended" here when a track finishes, so the queue can
+                // advance — everything else just receives.
+                auto msg = crow::json::load(text);
+                if (msg && msg.has("type") && std::string(msg["type"].s()) == "song_ended") {
+                    song_queue_.advance();
+                    broadcast_now_playing();
+                }
             });
     }
 
@@ -736,8 +1042,13 @@ private:
     RuntimeSettings runtime_;
     ModerationState moderation_;
     CommandsStore commands_;
+    PollState poll_;
+    PointsStore points_;
+    SongQueue song_queue_;
+    std::string broadcaster_name_;
     tts::TtsWorker* tts_ = nullptr;
     int rvc_port_ = 0;
+    OutgoingQueue* twitch_outgoing_ = nullptr;
 
     std::mutex connections_mutex_;
 

@@ -10,7 +10,7 @@ html, body {
   position: fixed;
   right: 32px;
   bottom: 32px;
-  width: 720px;
+  width: 860px;
   display: flex;
   flex-direction: column-reverse;
   gap: 14px;
@@ -24,9 +24,9 @@ html, body {
   background: rgba(20, 20, 28, 0.82);
   border-left: 7px solid #888;
   border-radius: 14px;
-  padding: 16px 20px;
+  padding: 18px 24px;
   color: #f2f2f2;
-  font-size: 26px;
+  font-size: 30px;
   line-height: 1.35;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   animation: slide-in 0.35s ease-out;
@@ -37,7 +37,7 @@ html, body {
 .bubble.twitch { border-left-color: #9146ff; }
 
 .bubble .badge {
-  font-size: 28px;
+  font-size: 32px;
   line-height: 1;
   flex: 0 0 auto;
 }
@@ -88,14 +88,66 @@ html, body {
 .event-card .nickname {
   color: #ffffff;
   font-weight: 800;
-  font-size: 42px;
+  font-size: 56px;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 0 14px rgba(0, 0, 0, 0.6);
 }
 
 .event-card img {
-  max-width: 460px;
-  max-height: 360px;
+  max-width: 620px;
+  max-height: 480px;
   border-radius: 14px;
+}
+
+.poll-widget {
+  position: fixed;
+  top: 32px;
+  left: 32px;
+  width: 560px;
+  background: rgba(20, 20, 28, 0.82);
+  border-radius: 14px;
+  padding: 26px 28px;
+  color: #f2f2f2;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  display: none;
+}
+
+.poll-widget.visible {
+  display: block;
+}
+
+.poll-question {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.poll-row {
+  margin-bottom: 14px;
+}
+
+.poll-row:last-child {
+  margin-bottom: 0;
+}
+
+.poll-row-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 21px;
+  margin-bottom: 8px;
+}
+
+.poll-bar-track {
+  height: 13px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.poll-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: #6ee7a8;
+  transition: width 0.3s ease-out;
 }
 
 @keyframes pop-in {

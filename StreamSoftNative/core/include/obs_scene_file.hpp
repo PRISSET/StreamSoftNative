@@ -1,7 +1,8 @@
 #pragma once
 
-// Adds the /chat and /events Browser Sources directly into OBS's own scene
-// collection JSON on disk — no obs-websocket, no "enable WebSocket server"
+// Adds the /chat, /events, /poll and /nowplaying Browser Sources directly
+// into OBS's own scene collection JSON on disk — no obs-websocket, no
+// "enable WebSocket server"
 // checkbox nobody will find. Trade-off: OBS must be closed while this runs
 // (editing its config file out from under a running instance is how you
 // corrupt it), so this only works before OBS is launched, not as a live
@@ -279,13 +280,19 @@ inline SceneFileResult ensure_browser_sources_via_file(int overlay_port) {
         root["sources"][scene_index]["settings"]["items"] = json::array();
     }
 
-    json resolution = root.contains("resolution") ? root["resolution"] : json::object();
-    int width = get_int(resolution, "x", 1920);
-    int height = get_int(resolution, "y", 1080);
     std::string base = "http://127.0.0.1:" + std::to_string(overlay_port);
 
-    ensure_one_source(root, scene_index, "StreamSoft Chat", base + "/chat", width, height);
-    ensure_one_source(root, scene_index, "StreamSoft Alerts", base + "/events", width, height);
+    // Native sizes for all four, not the stream canvas — see the comment on
+    // obs_client.hpp's ensure_browser_sources() for why: sizing a widget to
+    // the full canvas left its actual content a tiny, often-blurry postage
+    // stamp with no natural way to resize/reposition it in OBS. Each page
+    // CSS-positions its own content with `position: fixed` (see style.css),
+    // which works at any viewport size, so these just need to be "big
+    // enough" for that content's worst case.
+    ensure_one_source(root, scene_index, "StreamSoft Chat", base + "/chat", 940, 960);
+    ensure_one_source(root, scene_index, "StreamSoft Alerts", base + "/events", 820, 900);
+    ensure_one_source(root, scene_index, "StreamSoft Poll", base + "/poll", 640, 680);
+    ensure_one_source(root, scene_index, "StreamSoft Now Playing", base + "/nowplaying", 480, 270);
 
     try {
         std::ofstream out(scene_file, std::ios::binary | std::ios::trunc);

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Stream Chat Overlay — сейчас играет</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  /* Unlike chat/events/poll, this page IS the widget — not a huge
+     transparent canvas with a small widget pinned in a corner of it. The
+     OBS browser source for this page is created at its own native size
+     (see obs_client.hpp/obs_scene_file.hpp — 480x270, not the stream
+     canvas), so the user can freely resize/reposition it in OBS like any
+     normal source and get a crisp, correctly-scaled result — sizing this
+     relative to an assumed-huge canvas (the old vw-based approach) broke
+     the moment the source's actual configured resolution didn't match
+     that assumption, which is exactly what made it render tiny and blurry. */
+  #player-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  #player-container.hidden { display: none; }
+  #yt-player, #sc-player, #sc-iframe { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<div id="player-container" class="hidden">
+  <div id="yt-player"></div>
+  <div id="sc-player"></div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script>
+  // Core only tracks *what* should be playing (see song_queue.hpp) —
+  // actual playback and "did it end" detection happens here, client-side,
+  // via YouTube's and SoundCloud's own official embed player JS APIs.
+  // song_ended goes back over the same /ws connection so core can advance
+  // the queue — the only bidirectional use of that socket (every other
+  // overlay page only ever receives).
+  let ws;
+  let ytPlayer = null;
+  let scWidget = null;
+  let ytReady = false;
+  let pendingYtVideoId = null;
+  let currentVolume = 80;
+  // Every settings change and every queue mutation (even ones that don't
+  // touch the current track, e.g. someone else's request landing behind it)
+  // re-broadcasts now_playing — without tracking what's actually loaded,
+  // playYoutube/playSoundcloud below would reload the same track on every
+  // one of those and restart it from 0:00 mid-playback.
+  let currentKey = null;
+
+  function connectWs() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "now_playing") applyNowPlaying(data);
+    };
+    ws.onclose = () => setTimeout(connectWs, 2000);
+    ws.onerror = () => ws.close();
+  }
+
+  function sendSongEnded() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "song_ended" }));
+    }
+  }
+
+  function onYouTubeIframeAPIReady() {
+    ytReady = true;
+    ytPlayer = new YT.Player("yt-player", {
+      height: "100%",
+      width: "100%",
+      events: {
+        onReady: (e) => e.target.setVolume(currentVolume),
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.ENDED) sendSongEnded();
+        }
+      }
+    });
+    if (pendingYtVideoId) {
+      ytPlayer.loadVideoById(pendingYtVideoId);
+      pendingYtVideoId = null;
+    }
+  }
+
+  function playYoutube(videoId) {
+    document.getElementById("player-container").classList.remove("hidden");
+    document.getElementById("yt-player").style.display = "block";
+    document.getElementById("sc-player").style.display = "none";
+    if (scWidget) { try { scWidget.pause(); } catch (e) {} }
+    if (ytReady && ytPlayer && ytPlayer.loadVideoById) {
+      ytPlayer.loadVideoById(videoId);
+      ytPlayer.setVolume(currentVolume);
+    } else {
+      pendingYtVideoId = videoId;
+    }
+  }
+
+  function playSoundcloud(trackUrl) {
+    document.getElementById("player-container").classList.remove("hidden");
+    document.getElementById("yt-player").style.display = "none";
+    const scSlot = document.getElementById("sc-player");
+    scSlot.style.display = "block";
+    scSlot.innerHTML = `<iframe id="sc-iframe" width="100%" height="100%" scrolling="no" frameborder="no"
+      src="https://w.soundcloud.com/player/?url=${encodeURIComponent(trackUrl)}&auto_play=true"></iframe>`;
+    if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+
+    const iframe = document.getElementById("sc-iframe");
+    scWidget = SC.Widget(iframe);
+    scWidget.bind(SC.Widget.Events.READY, () => scWidget.setVolume(currentVolume));
+    scWidget.bind(SC.Widget.Events.FINISH, () => sendSongEnded());
+  }
+
+  function applyVolume(volume) {
+    if (typeof volume !== "number") return;
+    currentVolume = Math.max(0, Math.min(100, volume));
+    if (ytPlayer && ytPlayer.setVolume) { try { ytPlayer.setVolume(currentVolume); } catch (e) {} }
+    if (scWidget && scWidget.setVolume) { try { scWidget.setVolume(currentVolume); } catch (e) {} }
+  }
+
+  function applyNowPlaying(data) {
+    applyVolume(data.volume);
+
+    if (!data.current) {
+      currentKey = null;
+      // Hiding the container only hides it visually — the YT iframe/SC
+      // widget keep playing audio in the background unless told to stop.
+      // This is why Skip/Clear looked like they did nothing: the track
+      // kept audibly playing even though the (invisible) player moved on.
+      if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+      if (scWidget && scWidget.pause) { try { scWidget.pause(); } catch (e) {} }
+      document.getElementById("player-container").classList.add("hidden");
+      return;
+    }
+
+    const key = data.current.platform + ":" + data.current.ref;
+    if (key === currentKey) return; // same track still playing — don't reload it
+    currentKey = key;
+
+    if (data.current.platform === "youtube") playYoutube(data.current.ref);
+    else if (data.current.platform === "soundcloud") playSoundcloud(data.current.ref);
+  }
+
+  connectWs();
+</script>
+</body>
+</html>

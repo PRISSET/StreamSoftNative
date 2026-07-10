@@ -69,6 +69,7 @@ inline void run_core() {
     auto config = ConnectionsConfig::load();
 
     OverlayServer overlay(8099, resolve_resource_dir("web", STREAMSOFT_WEB_DIR));
+    overlay.set_broadcaster_name(config.twitch_channel);
 
     constexpr int kTtsPort = 8102;
     auto runtime = RuntimeSettings::load();
@@ -76,6 +77,7 @@ inline void run_core() {
                         runtime.tts_say_author, config.tts_max_chars);
     tts.set_volume_percent(runtime.tts_volume);
     tts.set_enabled(config.tts_enabled);
+    tts.set_ducking(runtime.ducking_enabled, runtime.ducking_percent);
     auto tts_process = tts::start(kTtsPort);
     tts.start();
     overlay.set_tts_worker(&tts);
@@ -124,6 +126,7 @@ inline void run_core() {
     std::vector<std::thread> workers;
 
     OutgoingQueue twitch_outgoing;
+    overlay.set_twitch_outgoing(&twitch_outgoing);
 
     if (config.should_run_twitch_chat()) {
         workers.emplace_back([&overlay, &twitch_outgoing, &tts, &config] {
@@ -132,7 +135,22 @@ inline void run_core() {
                     config.twitch_channel, config.twitch_client_id,
                     [&overlay, &twitch_outgoing, &tts, &config](const std::string& author, const std::string& text) {
                         if (overlay.is_muted(author)) return;
+                        if (overlay.try_poll_vote(author, text)) return;
+
+                        auto builtin_reply = overlay.try_builtin_command(author, text);
+                        if (builtin_reply) {
+                            twitch_outgoing.push(*builtin_reply);
+                            return;
+                        }
+
+                        auto song_reply = overlay.try_song_request(author, text);
+                        if (song_reply) {
+                            twitch_outgoing.push(*song_reply);
+                            return;
+                        }
+
                         overlay.broadcast_chat("twitch", author, text);
+                        overlay.award_points_for_message(author);
                         tts.say(author, text);
                         if (config.should_run_telegram()) {
                             telegram::notify_chat(config.telegram_bot_token, config.telegram_chat_id, "twitch",
@@ -143,6 +161,21 @@ inline void run_core() {
                         if (reply) twitch_outgoing.push(*reply);
                     },
                     &twitch_outgoing);
+            });
+        });
+
+        // Periodic, low-frequency nudge about the points economy and !song —
+        // otherwise a viewer has no way to learn about either short of
+        // reading !help themselves. Long interval and gated on the feature
+        // actually being on (see song_reminder_text()) so it never reads as
+        // spam the way a per-message or per-minute reminder would.
+        workers.emplace_back([&overlay, &twitch_outgoing] {
+            supervise("chat-reminders", [&overlay, &twitch_outgoing] {
+                while (true) {
+                    std::this_thread::sleep_for(std::chrono::minutes(15));
+                    auto text = overlay.song_reminder_text();
+                    if (text) twitch_outgoing.push(*text);
+                }
             });
         });
     } else if (!config.has_twitch()) {
@@ -176,7 +209,16 @@ inline void run_core() {
                     config.youtube_video_id, config.youtube_api_key,
                     [&overlay, &tts, &config](const std::string& author, const std::string& text) {
                         if (overlay.is_muted(author)) return;
+                        if (overlay.try_poll_vote(author, text)) return;
+                        // No outgoing-reply channel for YouTube (read-only
+                        // worker, same as chat commands) — still recognized
+                        // and consumed (points spent, command matched), the
+                        // reply text just has nowhere to go.
+                        if (overlay.try_builtin_command(author, text)) return;
+                        if (overlay.try_song_request(author, text)) return;
+
                         overlay.broadcast_chat("youtube", author, text);
+                        overlay.award_points_for_message(author);
                         tts.say(author, text);
                         if (config.should_run_telegram()) {
                             telegram::notify_chat(config.telegram_bot_token, config.telegram_chat_id, "youtube",

@@ -3,8 +3,9 @@
 // obs-websocket v5 client — no OBS plugin needed, OBS 28+ ships this
 // protocol built in (Tools -> WebSocket Server Settings). Handles the
 // Hello/Identify auth handshake and blocking request/response, then a
-// higher-level ensure_browser_sources() that creates or updates the two
-// overlay Browser Sources (/chat, /events) sized to the current canvas.
+// higher-level ensure_browser_sources() that creates or updates all four
+// overlay Browser Sources (/chat, /events, /poll, /nowplaying) sized to the
+// current canvas.
 
 #include <crow/json.h>
 #include <crow/logging.h>
@@ -51,6 +52,24 @@ inline std::string sha256_base64(const std::string& input) {
 
 class ObsClient {
 public:
+    // Native sizes for all four widget sources — independent of canvas
+    // resolution, see the comment on ensure_browser_sources() below. Each
+    // page CSS-positions its own content with `position: fixed` at a fixed
+    // pixel offset (see style.css), which works at any viewport size, so
+    // these just need to be "big enough" for that content's worst case:
+    // Chat fits MAX_BUBBLES (8, see app.js) stacked bubbles, Alerts fits a
+    // couple of concurrently-visible event cards, Poll fits its max of 9
+    // options (see poll.hpp's start()), Now Playing matches the player's
+    // natural 16:9 aspect.
+    static constexpr int kChatWidth = 940;
+    static constexpr int kChatHeight = 960;
+    static constexpr int kAlertsWidth = 820;
+    static constexpr int kAlertsHeight = 900;
+    static constexpr int kPollWidth = 640;
+    static constexpr int kPollHeight = 680;
+    static constexpr int kNowPlayingWidth = 480;
+    static constexpr int kNowPlayingHeight = 270;
+
     ~ObsClient() { ws_.stop(); }
 
     // Blocking. Throws std::runtime_error on any failure to connect/auth.
@@ -113,13 +132,17 @@ public:
         return d_field["responseData"];
     }
 
-    // Creates (or updates, if already present) two Browser Sources in the
-    // current scene: one for /chat, one for /events, sized to the canvas.
+    // Creates (or updates, if already present) four Browser Sources in the
+    // current scene — /chat, /events, /poll, /nowplaying — each sized to its
+    // own native widget size (see the k*Width/k*Height constants above),
+    // not the stream canvas. Sizing a small persistent widget to the full
+    // canvas left the actual content a tiny, often-blurry postage stamp
+    // inside a huge transform box, with no natural way to resize/reposition
+    // it in OBS without fighting that mismatch — a fixed native size means
+    // what you see in OBS's Properties/Transform is the widget itself,
+    // scalable and positionable the normal way, same as any image/video
+    // source.
     void ensure_browser_sources(int overlay_port) {
-        auto video = request("GetVideoSettings");
-        int width = static_cast<int>(video["baseWidth"].i());
-        int height = static_cast<int>(video["baseHeight"].i());
-
         auto scenes = request("GetSceneList");
         std::string scene_name = std::string(scenes["currentProgramSceneName"].s());
 
@@ -134,10 +157,14 @@ public:
             return false;
         };
 
-        ensure_one(scene_name, "StreamSoft Chat", "http://127.0.0.1:" + std::to_string(overlay_port) + "/chat", width,
-                   height, has_source("StreamSoft Chat"));
-        ensure_one(scene_name, "StreamSoft Alerts", "http://127.0.0.1:" + std::to_string(overlay_port) + "/events",
-                   width, height, has_source("StreamSoft Alerts"));
+        std::string base = "http://127.0.0.1:" + std::to_string(overlay_port);
+        ensure_one(scene_name, "StreamSoft Chat", base + "/chat", kChatWidth, kChatHeight, has_source("StreamSoft Chat"));
+        ensure_one(scene_name, "StreamSoft Alerts", base + "/events", kAlertsWidth, kAlertsHeight,
+                   has_source("StreamSoft Alerts"));
+        ensure_one(scene_name, "StreamSoft Poll", base + "/poll", kPollWidth, kPollHeight,
+                   has_source("StreamSoft Poll"));
+        ensure_one(scene_name, "StreamSoft Now Playing", base + "/nowplaying", kNowPlayingWidth, kNowPlayingHeight,
+                   has_source("StreamSoft Now Playing"));
     }
 
 private:

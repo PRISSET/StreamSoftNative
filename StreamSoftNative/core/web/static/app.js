@@ -2,6 +2,7 @@ const PLATFORM_BADGE = { youtube: "🔴", twitch: "💜" };
 
 const chatFeed = document.getElementById("chat-feed");
 const eventLayer = document.getElementById("event-layer");
+const pollWidget = document.getElementById("poll-widget");
 const MAX_BUBBLES = 8;
 
 const params = new URLSearchParams(location.search);
@@ -75,6 +76,33 @@ function addEventAlert(evt) {
   setTimeout(() => el.remove(), 5200);
 }
 
+function renderPoll(poll) {
+  if (!pollWidget) return;
+
+  if (!poll.active) {
+    pollWidget.classList.remove("visible");
+    pollWidget.innerHTML = "";
+    return;
+  }
+
+  pollWidget.classList.add("visible");
+  const total = poll.total_votes || 0;
+  const maxVotes = Math.max(1, ...poll.options.map((o) => o.votes));
+
+  const rows = poll.options
+    .map((o) => {
+      const pct = total > 0 ? Math.round((o.votes / total) * 100) : 0;
+      const barPct = Math.round((o.votes / maxVotes) * 100);
+      return `<div class="poll-row">
+        <div class="poll-row-label"><span>${escapeHtml(o.text)}</span><span>${pct}% (${o.votes})</span></div>
+        <div class="poll-bar-track"><div class="poll-bar-fill" style="width:${barPct}%"></div></div>
+      </div>`;
+    })
+    .join("");
+
+  pollWidget.innerHTML = `<div class="poll-question">${escapeHtml(poll.question)}</div>${rows}`;
+}
+
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onmessage = (event) => {
@@ -82,6 +110,7 @@ function connect() {
     if (data.type === "chat") addChatBubble(data);
     else if (data.type === "event") addEventAlert(data);
     else if (data.type === "config") applyConfig(data);
+    else if (data.type === "poll") renderPoll(data);
   };
   ws.onclose = () => setTimeout(connect, 2000);
   ws.onerror = () => ws.close();

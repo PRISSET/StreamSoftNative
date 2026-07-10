@@ -6,6 +6,8 @@
 // synthesis, and plays the result via the same Windows MCI approach as the
 // Python version (ctypes winmm there, direct winmm.lib linkage here).
 
+#include "audio_ducking.hpp"
+
 #include <crow/json.h>
 #include <crow/logging.h>
 #include <httplib.h>
@@ -111,6 +113,11 @@ public:
         rvc_f0method_ = f0method;
     }
 
+    void set_ducking(bool enabled, int percent) {
+        ducking_enabled_ = enabled;
+        ducking_percent_ = std::max(0, std::min(100, percent));
+    }
+
     // Interrupts whatever's currently playing (Telegram-style /skip).
     bool skip_current() {
         std::lock_guard<std::mutex> lock(mci_mutex_);
@@ -130,6 +137,12 @@ public:
 
 private:
     void run() {
+        // Needed for AudioDucker's MMDevice/COM calls below — this thread
+        // never touches COM otherwise (MCI playback doesn't need it), so
+        // nothing initialized it yet. Lives for the thread's whole
+        // lifetime, same as the rest of this worker's state.
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
         while (true) {
             QueueItem item;
             {
@@ -237,7 +250,9 @@ private:
             f << audio;
         }
 
+        if (ducking_enabled_) ducker_.duck(ducking_percent_);
         play_blocking(path, is_wav ? "waveaudio" : "mpegvideo");
+        if (ducking_enabled_) ducker_.restore();
         DeleteFileA(path.c_str());
     }
 
@@ -281,6 +296,10 @@ private:
     double rvc_index_rate_ = 0.3;
     double rvc_protect_ = 0.5;
     std::string rvc_f0method_ = "rmvpe";
+
+    std::atomic<bool> ducking_enabled_{false};
+    std::atomic<int> ducking_percent_{30};
+    AudioDucker ducker_; // only ever touched from run()'s own thread, see speak()
 
     std::thread thread_;
     std::mutex mutex_;
