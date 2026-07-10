@@ -84,6 +84,15 @@ inline void run_core() {
     auto rvc_process = rvc::start(kRvcPort);
     if (rvc_process.running) overlay.set_rvc_port(kRvcPort);
 
+    // Seeds TtsWorker with whatever RVC settings were last saved — without
+    // this, toggling "Включить смену голоса" saved to runtime_settings.json
+    // just fine but speak() never actually knew about it (confirmed live:
+    // page showed the adapter healthy, toggle looked enabled, TTS kept
+    // playing the plain voice) since nothing ever told the worker.
+    tts.set_rvc_settings(runtime.rvc_enabled, runtime.rvc_scope, runtime.rvc_pitch, runtime.rvc_index_rate,
+                          runtime.rvc_protect, runtime.rvc_f0method);
+    if (rvc_process.running) tts.set_rvc_port(kRvcPort);
+
     // Guards tts_process/rvc_process against the race between a background
     // Check&Install thread's "just finished" callback (below) writing a
     // freshly-started AdapterProcess into these and this thread reading them
@@ -101,12 +110,13 @@ inline void run_core() {
         tts_process = tts::start(kTtsPort);
         if (tts_process.running) CROW_LOG_INFO << "TTS-адаптер поднят сразу после установки, без перезапуска";
     });
-    set_module_installed_callback("rvc", [&rvc_process, &overlay, &adapter_mutex, kRvcPort] {
+    set_module_installed_callback("rvc", [&rvc_process, &overlay, &tts, &adapter_mutex, kRvcPort] {
         std::lock_guard<std::mutex> lock(adapter_mutex);
         if (rvc_process.running) return;
         rvc_process = rvc::start(kRvcPort);
         if (rvc_process.running) {
             overlay.set_rvc_port(kRvcPort);
+            tts.set_rvc_port(kRvcPort);
             CROW_LOG_INFO << "RVC-адаптер поднят сразу после установки, без перезапуска";
         }
     });

@@ -91,6 +91,26 @@ public:
     // Python side's mute list, but for the whole subsystem.
     void set_enabled(bool v) { enabled_ = v; }
 
+    // Set once at startup and again whenever the RVC adapter comes up after
+    // a fresh Check&Install (see core_app.hpp) — 0 means "no adapter",
+    // speak() then just skips conversion instead of trying a dead port.
+    void set_rvc_port(int port) { rvc_port_ = port; }
+
+    // The RVC settings page (RvcPage.qml) posts these as a group whenever
+    // any one of them changes — cheaper to just re-copy all five than to
+    // add a setter per field, and keeps them consistent with each other
+    // (no torn reads between e.g. pitch and f0method mid-update).
+    void set_rvc_settings(bool enabled, const std::string& scope, int pitch, double index_rate, double protect,
+                           const std::string& f0method) {
+        std::lock_guard<std::mutex> lock(rvc_mutex_);
+        rvc_enabled_ = enabled;
+        rvc_scope_ = scope;
+        rvc_pitch_ = pitch;
+        rvc_index_rate_ = index_rate;
+        rvc_protect_ = protect;
+        rvc_f0method_ = f0method;
+    }
+
     // Interrupts whatever's currently playing (Telegram-style /skip).
     bool skip_current() {
         std::lock_guard<std::mutex> lock(mci_mutex_);
@@ -162,22 +182,69 @@ private:
             return;
         }
 
+        std::string audio = res->body;
+        bool is_wav = false;
+
+        bool rvc_enabled;
+        int rvc_pitch;
+        double rvc_index_rate, rvc_protect;
+        std::string rvc_scope, rvc_f0method;
+        {
+            std::lock_guard<std::mutex> lock(rvc_mutex_);
+            rvc_enabled = rvc_enabled_;
+            rvc_scope = rvc_scope_;
+            rvc_pitch = rvc_pitch_;
+            rvc_index_rate = rvc_index_rate_;
+            rvc_protect = rvc_protect_;
+            rvc_f0method = rvc_f0method_;
+        }
+        int rvc_port = rvc_port_;
+
+        // "alerts" scope only converts events (item.author is nullopt for
+        // those, see say_event()); "all" converts chat lines too.
+        bool wants_conversion = rvc_enabled && rvc_port != 0 && (rvc_scope == "all" || !item.author);
+
+        if (wants_conversion) {
+            httplib::Client rvc_cli("http://127.0.0.1:" + std::to_string(rvc_port));
+            rvc_cli.set_connection_timeout(2);
+            // GPU inference on a short line has taken several seconds in
+            // testing — generous but not unbounded, so a genuinely stuck
+            // adapter doesn't stall the whole speech queue forever.
+            rvc_cli.set_read_timeout(30);
+
+            std::string query = "/convert?pitch=" + std::to_string(rvc_pitch) +
+                                 "&index_rate=" + std::to_string(rvc_index_rate) +
+                                 "&protect=" + std::to_string(rvc_protect) + "&f0method=" + rvc_f0method;
+            auto rvc_res = rvc_cli.Post(query, audio, "audio/mpeg");
+            if (rvc_res && rvc_res->status == 200) {
+                audio = rvc_res->body;
+                is_wav = true;
+            } else {
+                // Graceful degrade per CLAUDE.md §4: adapter hiccup falls
+                // back to the plain TTS voice already in `audio`, doesn't
+                // drop the line or take down the queue.
+                CROW_LOG_WARNING << "RVC-конвертация не удалась, играю обычный голос TTS";
+            }
+        }
+
         char tmp_dir[MAX_PATH];
         GetTempPathA(MAX_PATH, tmp_dir);
-        std::string path = std::string(tmp_dir) + "streamsoft_tts_" + std::to_string(GetTickCount64()) + ".mp3";
+        std::string path = std::string(tmp_dir) + "streamsoft_tts_" + std::to_string(GetTickCount64()) +
+                            (is_wav ? ".wav" : ".mp3");
 
         {
             std::ofstream f(path, std::ios::binary | std::ios::trunc);
-            f << res->body;
+            f << audio;
         }
 
-        play_blocking(path);
+        play_blocking(path, is_wav ? "waveaudio" : "mpegvideo");
         DeleteFileA(path.c_str());
     }
 
-    void play_blocking(const std::string& path) {
+    void play_blocking(const std::string& path, const std::string& mci_type) {
         std::wstring walias = L"tts_" + std::to_wstring(GetCurrentThreadId());
         std::wstring wpath(path.begin(), path.end());
+        std::wstring wtype(mci_type.begin(), mci_type.end());
 
         {
             std::lock_guard<std::mutex> lock(mci_mutex_);
@@ -185,7 +252,7 @@ private:
         }
 
         wchar_t buf[255];
-        std::wstring open_cmd = L"open \"" + wpath + L"\" type mpegvideo alias " + walias;
+        std::wstring open_cmd = L"open \"" + wpath + L"\" type " + wtype + L" alias " + walias;
         if (mciSendStringW(open_cmd.c_str(), buf, 254, nullptr) == 0) {
             mciSendStringW((L"play " + walias + L" wait").c_str(), buf, 254, nullptr);
             mciSendStringW((L"close " + walias).c_str(), buf, 254, nullptr);
@@ -205,6 +272,15 @@ private:
     int max_chars_;
     std::atomic<int> volume_percent_{100};
     std::atomic<bool> enabled_{true};
+
+    std::atomic<int> rvc_port_{0};
+    std::mutex rvc_mutex_;
+    bool rvc_enabled_ = false;
+    std::string rvc_scope_ = "alerts";
+    int rvc_pitch_ = 12;
+    double rvc_index_rate_ = 0.3;
+    double rvc_protect_ = 0.5;
+    std::string rvc_f0method_ = "rmvpe";
 
     std::thread thread_;
     std::mutex mutex_;

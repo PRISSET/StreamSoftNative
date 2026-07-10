@@ -333,13 +333,23 @@ private:
                         runtime_.alert_scale = std::max(0.5, std::min(2.5, v));
                     }
 
-                    if (body.has("rvc_enabled")) runtime_.rvc_enabled = body["rvc_enabled"].b();
+                    bool rvc_touched = false;
+                    if (body.has("rvc_enabled")) { runtime_.rvc_enabled = body["rvc_enabled"].b(); rvc_touched = true; }
                     if (body.has("rvc_model")) runtime_.rvc_model = std::string(body["rvc_model"].s());
-                    if (body.has("rvc_scope")) runtime_.rvc_scope = std::string(body["rvc_scope"].s());
-                    if (body.has("rvc_pitch")) runtime_.rvc_pitch = static_cast<int>(body["rvc_pitch"].i());
-                    if (body.has("rvc_index_rate")) runtime_.rvc_index_rate = body["rvc_index_rate"].d();
-                    if (body.has("rvc_protect")) runtime_.rvc_protect = body["rvc_protect"].d();
-                    if (body.has("rvc_f0method")) runtime_.rvc_f0method = std::string(body["rvc_f0method"].s());
+                    if (body.has("rvc_scope")) { runtime_.rvc_scope = std::string(body["rvc_scope"].s()); rvc_touched = true; }
+                    if (body.has("rvc_pitch")) { runtime_.rvc_pitch = static_cast<int>(body["rvc_pitch"].i()); rvc_touched = true; }
+                    if (body.has("rvc_index_rate")) { runtime_.rvc_index_rate = body["rvc_index_rate"].d(); rvc_touched = true; }
+                    if (body.has("rvc_protect")) { runtime_.rvc_protect = body["rvc_protect"].d(); rvc_touched = true; }
+                    if (body.has("rvc_f0method")) { runtime_.rvc_f0method = std::string(body["rvc_f0method"].s()); rvc_touched = true; }
+                    // Without this, toggling RVC on/off or dragging its
+                    // sliders saved to runtime_settings.json and reflected
+                    // back in the UI just fine, but speak() never found out
+                    // — confirmed live: adapter healthy, toggle "on", still
+                    // only ever played the plain TTS voice.
+                    if (rvc_touched && tts_) {
+                        tts_->set_rvc_settings(runtime_.rvc_enabled, runtime_.rvc_scope, runtime_.rvc_pitch,
+                                                runtime_.rvc_index_rate, runtime_.rvc_protect, runtime_.rvc_f0method);
+                    }
                     runtime_.save();
                 }
 
@@ -615,6 +625,19 @@ private:
         CROW_ROUTE(app_, "/api/test-chat")
             .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
                 broadcast_chat("twitch", "TestUser", "Тестовое сообщение чата");
+                return crow::response(R"({"ok": true})");
+            });
+
+        // Exercises the real TtsWorker::speak() path (including the RVC
+        // conversion step, if enabled) without needing a live Twitch/YouTube
+        // connection — same idea as /api/test-chat above, just for TTS.
+        CROW_ROUTE(app_, "/api/test-tts")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                if (!tts_) return crow::response(503, R"({"ok": false, "error": "tts not running"})");
+                auto body = crow::json::load(req.body);
+                std::string text =
+                    (body && body.has("text")) ? std::string(body["text"].s()) : std::string("Проверка голоса, раз, два, три");
+                tts_->say("Тест", text);
                 return crow::response(R"({"ok": true})");
             });
 
