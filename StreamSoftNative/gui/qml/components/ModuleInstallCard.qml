@@ -7,7 +7,7 @@ import StreamSoftGui
 // GET /api/modules/<name>/status on a slow timer normally, switches to a
 // fast GET .../progress poll only while a download/extract is actually
 // running, and posts .../install to kick one off. One component shared by
-// TtsPage.qml and RvcPage.qml instead of duplicating this per page.
+// both TTS and RVC sections of VoicePage.qml instead of duplicating this.
 GlassCard {
     id: root
     property string moduleName: ""

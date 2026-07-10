@@ -219,9 +219,8 @@ ApplicationWindow {
         api.get("/api/settings", function (ok, data) {
             if (!ok) return
             overlayPage.applySettings(data)
-            ttsPage.applySettings(data)
+            voicePage.applySettings(data)
             mutedPage.applySettings(data)
-            rvcPage.applySettings(data)
         })
     }
 
@@ -261,7 +260,7 @@ ApplicationWindow {
                 }
 
                 Repeater {
-                    model: ["Оверлей", "Подключения", "Озвучка", "Алерты и медиа", "Команды чата", "Замьюченные", "Клон голоса", "Настройки", "Обновления"]
+                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Замьюченные", "Настройки", "Обновления"]
                     delegate: NavButton {
                         required property string modelData
                         required property int index
@@ -310,11 +309,10 @@ ApplicationWindow {
 
                 OverlayPage { id: overlayPage; width: pageStack.width }
                 ConnectionsPage { id: connectionsPage; width: pageStack.width }
-                TtsPage { id: ttsPage; width: pageStack.width }
+                VoicePage { id: voicePage; width: pageStack.width }
                 AlertsPage { id: alertsPage; width: pageStack.width }
                 CommandsPage { id: commandsPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
-                RvcPage { id: rvcPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }
             }

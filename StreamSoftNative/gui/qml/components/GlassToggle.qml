@@ -14,6 +14,13 @@ Switch {
         width: 46
         height: 26
 
+        // iOS-style: the track itself stays glass/translucent in both
+        // states (a solid opaque fill reads as a generic Android/Material
+        // switch, not Apple's) — only its tint shifts toward Theme.good
+        // when on, same frosted language as every other control instead of
+        // a flat color block. The knob is always white, like real iOS —
+        // it used to flip to near-black when checked, which is the
+        // opposite of what Apple's switches actually do.
         GlassSurface {
             id: track
             anchors.fill: parent
@@ -21,8 +28,19 @@ Switch {
             pad: 8
             refractPx: 7
             specularStrength: 0.6
-            tintColor: root.checked ? "#eeeef1" : (root.hovered ? Theme.glassFillHover : Theme.glassFill)
+            tintColor: root.checked
+                ? (root.hovered ? "#596ee7a8" : "#406ee7a8")
+                : (root.hovered ? Theme.glassFillHover : Theme.glassFill)
             Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
+        }
+
+        Rectangle {
+            visible: root.checked
+            anchors.fill: track
+            radius: track.radiusPx
+            border.width: 1
+            border.color: "#5a6ee7a8"
+            color: "transparent"
         }
 
         Rectangle {
@@ -42,7 +60,7 @@ Switch {
             width: 20
             height: 20
             radius: 10
-            color: root.checked ? "#0c0c0d" : "#ffffff"
+            color: "#ffffff"
             Behavior on x { NumberAnimation { duration: Theme.motionMed; easing.type: Theme.motionEasing } }
 
             layer.enabled: true
