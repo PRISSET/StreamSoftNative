@@ -250,9 +250,17 @@ private:
             f << audio;
         }
 
-        if (ducking_enabled_) ducker_.duck(ducking_percent_);
+        // Captured once, not re-read from the atomic after play_blocking()
+        // returns: toggling the setting off mid-line used to make the
+        // restore() call see a different value than the duck() call did,
+        // so a message that started ducked could finish with restore()
+        // skipped — every app stayed quiet forever, with no way to
+        // recover short of restarting StreamSoft.
+        bool should_duck = ducking_enabled_.load();
+        int duck_percent = ducking_percent_.load();
+        if (should_duck) ducker_.duck(duck_percent);
         play_blocking(path, is_wav ? "waveaudio" : "mpegvideo");
-        if (ducking_enabled_) ducker_.restore();
+        if (should_duck) ducker_.restore();
         DeleteFileA(path.c_str());
     }
 
