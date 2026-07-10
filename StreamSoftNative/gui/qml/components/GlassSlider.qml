@@ -20,11 +20,14 @@ Slider {
             specularStrength: 0.4
         }
 
+        // Apple's sliders fill with the system accent color, not plain
+        // white/text — same Theme.good tint GlassToggle now uses when on,
+        // so every control agrees on what "active" looks like.
         Rectangle {
             width: root.visualPosition * parent.width
             height: parent.height
             radius: 4
-            color: Theme.text
+            color: "#6ee7a8"
         }
     }
 
