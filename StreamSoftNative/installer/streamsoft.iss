@@ -1,5 +1,5 @@
 #define MyAppName "StreamSoft"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "PRISSETIK"
 #define MyAppExeName "streamsoft_gui.exe"
 #define SourceRoot "..\build\gui\Release"

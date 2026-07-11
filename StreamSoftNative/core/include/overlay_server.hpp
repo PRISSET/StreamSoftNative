@@ -7,6 +7,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -155,6 +156,11 @@ public:
     void set_tts_worker(tts::TtsWorker* tts) { tts_ = tts; }
 
     void set_rvc_port(int port) { rvc_port_ = port; }
+
+    void set_rvc_control(std::function<bool()> start_fn, std::function<void()> stop_fn) {
+        rvc_start_ = std::move(start_fn);
+        rvc_stop_ = std::move(stop_fn);
+    }
 
     void broadcast_chat(const std::string& platform, const std::string& author, const std::string& text) {
         crow::json::wvalue payload;
@@ -559,6 +565,7 @@ private:
             crow::json::wvalue resp;
             if (rvc_port_ == 0) {
                 resp["available"] = false;
+                resp["running"] = false;
                 return crow::response(resp.dump());
             }
             httplib::Client cli("http://127.0.0.1:" + std::to_string(rvc_port_));
@@ -567,14 +574,34 @@ private:
             auto r = cli.Get("/health");
             if (!r || r->status != 200) {
                 resp["available"] = false;
+                resp["running"] = false;
                 return crow::response(resp.dump());
             }
             auto data = crow::json::load(r->body);
             resp["available"] = true;
+            resp["running"] = true;
             resp["device"] = data && data.has("device") ? std::string(data["device"].s()) : "";
             resp["model"] = data && data.has("model") ? std::string(data["model"].s()) : "";
             return crow::response(resp.dump());
         });
+
+        CROW_ROUTE(app_, "/api/rvc/stop")
+            .methods(crow::HTTPMethod::Post)([this] {
+                if (!rvc_stop_) return crow::response(R"({"ok": false, "error": "unavailable"})");
+                rvc_stop_();
+                return crow::response(R"({"ok": true, "running": false})");
+            });
+
+        CROW_ROUTE(app_, "/api/rvc/start")
+            .methods(crow::HTTPMethod::Post)([this] {
+                if (!rvc_start_) return crow::response(R"({"ok": false, "error": "unavailable"})");
+                bool running = rvc_start_();
+                crow::json::wvalue resp;
+                resp["ok"] = running;
+                resp["running"] = running;
+                if (!running) resp["error"] = "start_failed";
+                return crow::response(resp.dump());
+            });
 
         CROW_ROUTE(app_, "/api/rvc/models")
         ([this] {
@@ -956,6 +983,8 @@ private:
     std::string broadcaster_name_;
     tts::TtsWorker* tts_ = nullptr;
     int rvc_port_ = 0;
+    std::function<bool()> rvc_start_;
+    std::function<void()> rvc_stop_;
     OutgoingQueue* twitch_outgoing_ = nullptr;
 
     std::mutex connections_mutex_;

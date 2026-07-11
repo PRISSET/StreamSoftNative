@@ -95,7 +95,7 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_CACERT_PATH="${CMAKE_SOURCE_DIR}/core/certs/cacert.pem"
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
-    STREAMSOFT_VERSION="1.0.0"
+    STREAMSOFT_VERSION="1.0.1"
     QT_NO_KEYWORDS
 )
 

@@ -8,6 +8,8 @@ ColumnLayout {
 
     property bool loading: false
     property bool rvcAvailable: false
+    property bool rvcRunning: false
+    property bool rvcBusy: false
 
     function applySettings(settings) {
         loading = true
@@ -55,6 +57,25 @@ ColumnLayout {
     function refreshRvcHealth() {
         api.get("/api/rvc/health", function (ok, data) {
             root.rvcAvailable = ok && !!data.available
+            root.rvcRunning = ok && !!data.running
+        })
+    }
+
+    function startRvc() {
+        root.rvcBusy = true
+        api.post("/api/rvc/start", {}, function (ok, data) {
+            root.rvcBusy = false
+            root.rvcRunning = ok && !!data.running
+            root.refreshRvcHealth()
+        })
+    }
+
+    function stopRvc() {
+        root.rvcBusy = true
+        api.post("/api/rvc/stop", {}, function (ok, data) {
+            root.rvcBusy = false
+            root.rvcRunning = false
+            root.rvcAvailable = false
         })
     }
 
@@ -168,6 +189,7 @@ ColumnLayout {
     }
 
     ModuleInstallCard {
+        id: rvcModuleCard
         Layout.fillWidth: true
         moduleName: "rvc"
         title: "Установка RVC-модуля"
@@ -183,12 +205,31 @@ ColumnLayout {
                 color: root.rvcAvailable ? Theme.good : "#55555c"
             }
             Text {
-                text: root.rvcAvailable ? "RVC-сервис доступен" : "RVC-сервис недоступен — приложение запускает его само, подождите пару секунд после установки"
+                text: root.rvcAvailable
+                    ? "RVC-сервис работает"
+                    : (rvcModuleCard.installed
+                        ? "RVC-сервис выключен"
+                        : "RVC-сервис недоступен — установите модуль выше")
                 color: Theme.textFaint
                 font.pixelSize: Theme.fontMd
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
+            PillButton {
+                visible: rvcModuleCard.installed
+                enabled: !root.rvcBusy
+                danger: root.rvcRunning
+                text: root.rvcRunning ? "Выключить" : "Включить"
+                onClicked: root.rvcRunning ? root.stopRvc() : root.startRvc()
+            }
+        }
+        Text {
+            visible: !root.rvcRunning && rvcModuleCard.installed
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            text: "Выключай после стрима, если сервис ест FPS в играх — включается обратно в любой момент."
         }
     }
 

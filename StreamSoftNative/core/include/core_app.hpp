@@ -98,6 +98,24 @@ inline void run_core() {
         }
     });
 
+    overlay.set_rvc_control(
+        [&rvc_process, &overlay, &tts, &adapter_mutex, kRvcPort]() -> bool {
+            std::lock_guard<std::mutex> lock(adapter_mutex);
+            if (!rvc_process.running) rvc_process = rvc::start(kRvcPort);
+            if (rvc_process.running) {
+                overlay.set_rvc_port(kRvcPort);
+                tts.set_rvc_port(kRvcPort);
+            }
+            return rvc_process.running;
+        },
+        [&rvc_process, &overlay, &tts, &adapter_mutex] {
+            std::lock_guard<std::mutex> lock(adapter_mutex);
+            if (!rvc_process.running) return;
+            rvc::stop(rvc_process);
+            overlay.set_rvc_port(0);
+            tts.set_rvc_port(0);
+        });
+
     std::vector<std::thread> workers;
 
     OutgoingQueue twitch_outgoing;
