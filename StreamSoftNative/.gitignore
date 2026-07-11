@@ -37,6 +37,7 @@ adapters/*_download_tmp/
 .env
 twitch_token.json
 connections.json
+CLAUDE.md
 
 # Qt SDK (прекомпилированный, тянется aqtinstall) и временное venv для него —
 # см. docs/BUILD.md за командой установки
