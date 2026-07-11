@@ -801,6 +801,38 @@ private:
             resp["releases"] = std::move(releases);
             return crow::response(resp.dump());
         });
+
+        // Plain text, not JSON — this is streamsoft.log's tail verbatim
+        // (see file_logger.hpp), meant to be read by a human (or curl) to
+        // see what a real install actually logged, since the shipped app
+        // has no console for CROW_LOG output to land on otherwise. ?lines=
+        // defaults to the last 200 lines, capped at 2000 so a request can't
+        // be used to slowly read the whole (up to 2MB) file over and over.
+        CROW_ROUTE(app_, "/api/log")
+        ([](const crow::request& req) {
+            int want_lines = 200;
+            auto it = req.url_params.get("lines");
+            if (it) want_lines = std::max(1, std::min(2000, std::atoi(it)));
+
+            std::ifstream f("streamsoft.log", std::ios::binary);
+            if (!f) return crow::response(404, "streamsoft.log ещё не создан");
+
+            std::vector<std::string> lines;
+            std::string line;
+            while (std::getline(f, line)) {
+                lines.push_back(std::move(line));
+                if (static_cast<int>(lines.size()) > want_lines) lines.erase(lines.begin());
+            }
+
+            std::string body;
+            for (const auto& l : lines) {
+                body += l;
+                body += '\n';
+            }
+            crow::response resp(body);
+            resp.set_header("Content-Type", "text/plain; charset=utf-8");
+            return resp;
+        });
     }
 
     void setup_poll_routes() {

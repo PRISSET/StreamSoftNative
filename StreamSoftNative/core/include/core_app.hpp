@@ -10,6 +10,7 @@
 #include "auto_update.hpp"
 #include "connections_config.hpp"
 #include "discord_presence.hpp"
+#include "file_logger.hpp"
 #include "outgoing_queue.hpp"
 #include "overlay_server.hpp"
 #include "runtime_settings.hpp"
@@ -65,6 +66,7 @@ inline void run_core() {
     using namespace detail;
 
     ensure_writable_config_cwd();
+    install_file_logger();
 
     auto config = ConnectionsConfig::load();
 
