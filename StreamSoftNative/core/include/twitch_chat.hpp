@@ -139,6 +139,18 @@ inline void watch_twitch(const std::string& channel, const std::string& client_i
             std::string access_token = get_access_token(client_id);
             std::string nick = get_username(client_id, access_token);
             connect_and_listen(channel, nick, access_token, on_message, outgoing);
+        } catch (const AuthRejected& e) {
+            // Twitch itself rejected the token (revoked/rotated server-side,
+            // not just locally "expired") — get_access_token()'s cached-token
+            // fast path has no way to know that on its own, so without this
+            // it would keep handing out the same dead token forever. Wiping
+            // the cache forces the next get_access_token() call past that
+            // fast path into refresh/device-code re-auth (which is what
+            // actually surfaces the reconnect banner in the GUI).
+            CROW_LOG_ERROR << "Twitch отклонил токен, сбрасываю кэш и повторю авторизацию через 15 секунд: "
+                            << e.what();
+            invalidate_cached_token();
+            std::this_thread::sleep_for(std::chrono::seconds(15));
         } catch (const std::exception& e) {
             CROW_LOG_ERROR << "Ошибка Twitch чата, повтор через 15 секунд: " << e.what();
             std::this_thread::sleep_for(std::chrono::seconds(15));

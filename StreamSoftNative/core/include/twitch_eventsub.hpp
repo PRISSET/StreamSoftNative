@@ -210,6 +210,15 @@ inline void watch_twitch_events(const std::string& channel, const std::string& c
     while (true) {
         try {
             run_once(channel, client_id, on_event);
+        } catch (const AuthRejected& e) {
+            // See the matching catch in twitch_chat.hpp's watch_twitch() —
+            // same fix, same reason: a token Twitch rejected server-side
+            // still looks locally unexpired, so the cache has to be wiped
+            // here or get_access_token() just keeps handing it back out.
+            CROW_LOG_ERROR << "Twitch отклонил токен (EventSub), сбрасываю кэш и повторю авторизацию через 20 секунд: "
+                            << e.what();
+            invalidate_cached_token();
+            std::this_thread::sleep_for(std::chrono::seconds(20));
         } catch (const std::exception& e) {
             CROW_LOG_ERROR << "Ошибка Twitch EventSub, повтор через 20 секунд: " << e.what();
             std::this_thread::sleep_for(std::chrono::seconds(20));

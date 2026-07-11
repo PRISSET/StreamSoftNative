@@ -12,6 +12,7 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
@@ -80,6 +81,24 @@ public:
     ScopedAuthPrompt& operator=(const ScopedAuthPrompt&) = delete;
 };
 inline const std::string kTokenFile = "twitch_token.json";
+
+// Thrown specifically for a 401 from Twitch's own API (as opposed to a
+// network hiccup/timeout) — get_access_token()'s cached-token fast path
+// only looks at the locally-stored expires_in, so a token Twitch has
+// actually revoked/invalidated server-side (password change, the user
+// revoking the app's access in their Twitch settings, etc.) still looks
+// "not expired yet" locally and keeps getting handed out as-is forever.
+// Without this, watch_twitch()/watch_twitch_events() just log "retry in
+// 15/20s" and call get_access_token() again, which returns the exact same
+// dead token — infinite loop, chat/EventSub silently dead with no re-auth
+// prompt ever surfacing. Callers that catch this specifically call
+// invalidate_cached_token() below before retrying, which forces the next
+// get_access_token() past the fast path into refresh/device-code flow.
+struct AuthRejected : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+inline void invalidate_cached_token() { std::remove(kTokenFile.c_str()); }
 
 // Every outbound HTTPS client in this project must verify certificates
 // against the bundled CA store — cpp-httplib does NOT verify by default,
@@ -285,7 +304,9 @@ inline std::string get_username(const std::string& client_id, const std::string&
 
     auto resp = api.Get("/helix/users", headers);
     if (!resp || resp->status != 200) {
-        throw std::runtime_error("Не удалось получить имя пользователя Twitch: " + (resp ? resp->body : "no response"));
+        std::string msg = "Не удалось получить имя пользователя Twitch: " + (resp ? resp->body : "no response");
+        if (resp && resp->status == 401) throw AuthRejected(msg);
+        throw std::runtime_error(msg);
     }
     auto data = crow::json::load(resp->body);
     return std::string(data["data"][0]["login"].s());
@@ -297,7 +318,9 @@ inline std::string get_user_id(const std::string& client_id, const std::string& 
 
     auto resp = api.Get("/helix/users?login=" + url_encode(login), headers);
     if (!resp || resp->status != 200) {
-        throw std::runtime_error("Не удалось получить id канала " + login + ": " + (resp ? resp->body : "no response"));
+        std::string msg = "Не удалось получить id канала " + login + ": " + (resp ? resp->body : "no response");
+        if (resp && resp->status == 401) throw AuthRejected(msg);
+        throw std::runtime_error(msg);
     }
     auto data = crow::json::load(resp->body);
     if (data["data"].size() == 0) {
