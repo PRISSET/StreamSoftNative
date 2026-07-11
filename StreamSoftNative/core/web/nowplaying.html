@@ -43,7 +43,11 @@
   let ws;
   let ytPlayer = null;
   let scWidget = null;
-  let ytReady = false;
+  // Set only inside onReady — YT.Player(...) returns long before the
+  // embed's internal iframe/postMessage bridge is actually up, so it's NOT
+  // safe to call loadVideoById() right after construction (see onReady's
+  // comment below for what that used to break).
+  let ytPlayerReady = false;
   let pendingYtVideoId = null;
   let currentVolume = 80;
   // Every settings change and every queue mutation (even ones that don't
@@ -63,14 +67,15 @@
     ws.onerror = () => ws.close();
   }
 
-  function sendSongEnded() {
+  function sendSongEnded(reason) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "song_ended" }));
+      const msg = { type: "song_ended" };
+      if (reason) msg.reason = reason;
+      ws.send(JSON.stringify(msg));
     }
   }
 
   function onYouTubeIframeAPIReady() {
-    ytReady = true;
     ytPlayer = new YT.Player("yt-player", {
       height: "100%",
       width: "100%",
@@ -92,6 +97,7 @@
       },
       events: {
         onReady: (e) => {
+          ytPlayerReady = true;
           e.target.setVolume(currentVolume);
           // The widget only ever displays at 480x270 — decoding whatever
           // resolution YouTube defaults to (often 1080p) burns GPU/CPU for
@@ -100,9 +106,37 @@
           // just a hint (YouTube's player can ignore it), but costs
           // nothing to ask.
           try { e.target.setPlaybackQuality("small"); } catch (err) {}
+          // new YT.Player(...) returns before the embed's internal iframe/
+          // postMessage bridge is actually up — calling mute()/loadVideoById
+          // synchronously right after construction (as this used to do)
+          // hits the player mid-init and YouTube answers with error 2
+          // ("invalid parameter"), which onError below then treats as an
+          // unplayable track and skips — so a queued song never actually
+          // played, just silently vanished. onReady is the first point
+          // those calls are guaranteed to land on a live player.
+          if (pendingYtVideoId) {
+            const videoId = pendingYtVideoId;
+            pendingYtVideoId = null;
+            try { e.target.mute(); } catch (err) {}
+            e.target.loadVideoById(videoId);
+          }
         },
         onStateChange: (e) => {
           if (e.data === YT.PlayerState.ENDED) sendSongEnded();
+          // Browsers block autoplay-with-sound outright — an unmuted
+          // loadVideoById() just sits there in the CUED state forever,
+          // never actually starting, which is exactly what "просто белый
+          // экран, ничего не играет" was: the player loaded fine, it just
+          // never got permission to make sound. Muted autoplay is always
+          // allowed, so playYoutube() below starts muted and this unmutes
+          // the instant real playback begins (BUFFERING/PLAYING) — the
+          // muted window is milliseconds, not audible as a gap.
+          if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING) {
+            try {
+              e.target.unMute();
+              e.target.setVolume(currentVolume);
+            } catch (err) {}
+          }
         },
         // Fires for region-locked/private/deleted videos and — most
         // commonly — videos with embedding disabled by the uploader
@@ -110,13 +144,17 @@
         // those to play (nor should there be), so the only sane thing to
         // do is treat it like the track ended and move on to the next
         // request instead of leaving a dead player on screen.
-        onError: () => sendSongEnded()
+        onError: (e) => {
+          // e.data is a YT error code (2 invalid id, 5 HTML5 player error,
+          // 100 not found/private, 101/150 embedding disabled by owner) —
+          // sent back to core's log (and echoed to the browser console) so
+          // a run stuck on "nothing plays" is diagnosable without needing
+          // devtools open on the machine actually running OBS.
+          console.warn("[nowplaying] YouTube onError, code:", e.data);
+          sendSongEnded("yt_error_" + e.data);
+        }
       }
     });
-    if (pendingYtVideoId) {
-      ytPlayer.loadVideoById(pendingYtVideoId);
-      pendingYtVideoId = null;
-    }
   }
 
   function playYoutube(videoId) {
@@ -124,9 +162,11 @@
     document.getElementById("yt-player").style.display = "block";
     document.getElementById("sc-player").style.display = "none";
     if (scWidget) { try { scWidget.pause(); } catch (e) {} }
-    if (ytReady && ytPlayer && ytPlayer.loadVideoById) {
+    if (ytPlayerReady && ytPlayer && ytPlayer.loadVideoById) {
+      // Start muted — see the onStateChange comment above. unMute() fires
+      // as soon as the state change confirms it's actually playing.
+      try { ytPlayer.mute(); } catch (e) {}
       ytPlayer.loadVideoById(videoId);
-      ytPlayer.setVolume(currentVolume);
       // onReady only fires once, for the player's first load — every
       // subsequent track needs this re-applied, or it defaults back to
       // whatever resolution YouTube picks (usually far higher than this
@@ -153,7 +193,7 @@
     // A track that's geo-blocked, private, or taken down fires ERROR
     // instead of ever reaching FINISH — same "don't get stuck, just move
     // on" handling as the YouTube player's onError above.
-    scWidget.bind(SC.Widget.Events.ERROR, () => sendSongEnded());
+    scWidget.bind(SC.Widget.Events.ERROR, () => sendSongEnded("sc_error"));
   }
 
   function applyVolume(volume) {

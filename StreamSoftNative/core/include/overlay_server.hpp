@@ -973,6 +973,14 @@ private:
                 // advance — everything else just receives.
                 auto msg = crow::json::load(text);
                 if (msg && msg.has("type") && std::string(msg["type"].s()) == "song_ended") {
+                    // "reason" is only present when the embed player errored
+                    // out (bad id / embedding disabled / region-locked)
+                    // rather than actually finishing — logged so a track
+                    // that never audibly plays is diagnosable from core's
+                    // own log instead of requiring the browser console.
+                    if (msg.has("reason")) {
+                        CROW_LOG_WARNING << "song_queue: track ended abnormally (" << msg["reason"].s() << ")";
+                    }
                     song_queue_.advance();
                     broadcast_now_playing();
                 }
