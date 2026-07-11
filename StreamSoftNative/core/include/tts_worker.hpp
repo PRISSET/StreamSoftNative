@@ -191,6 +191,23 @@ private:
         std::string phrase = (say_author_ && item.author) ? (*item.author + ": " + clean) : clean;
         std::string voice = pick_voice(clean);
 
+        // duck()'s COM device/session enumeration (audio_ducking.hpp) is
+        // the actual source of the audible stutter reported "at moments" —
+        // it used to run synchronously right before play_blocking() below,
+        // so its cost (every active render device, every session on each —
+        // can be tens to hundreds of ms on a machine with a game, Discord,
+        // browser, OBS, etc. all open) landed directly on the line's start
+        // latency, once per burst. Starting it here and joining just before
+        // play_blocking() overlaps it with the TTS synth call (and RVC's
+        // multi-second GPU inference, when that's in the path) instead,
+        // which in every realistic case is already slower than the
+        // enumeration — so the duck by the time playback is ready to start.
+        std::thread duck_thread;
+        if (ducking_enabled_) {
+            int target_percent = ducking_percent_.load();
+            duck_thread = std::thread([this, target_percent] { ducker_.duck(target_percent); });
+        }
+
         httplib::Client cli("http://127.0.0.1:" + std::to_string(port_));
         cli.set_connection_timeout(2);
         cli.set_read_timeout(20);
@@ -208,6 +225,12 @@ private:
         auto res = cli.Post("/synthesize", body.dump(), "application/json");
         if (!res || res->status != 200) {
             CROW_LOG_WARNING << "TTS-адаптер недоступен, сообщение пропущено";
+            // duck_thread is already running (or about to start ducking) at
+            // this point — join it before bailing, or an un-joined
+            // still-joinable std::thread calls std::terminate() on
+            // destruction. restore() (run()'s loop, once the queue drains)
+            // is unconditional, so this doesn't leave anything stuck ducked.
+            if (duck_thread.joinable()) duck_thread.join();
             return;
         }
 
@@ -270,7 +293,10 @@ private:
         // see the comment there. Only duck() here; toggling the setting off
         // mid-line just means this was the last line to duck for, run()'s
         // restore() call (unconditional, idempotent) still cleans it up.
-        if (ducking_enabled_) ducker_.duck(ducking_percent_.load());
+        // duck_thread was kicked off back near the top of this function (see
+        // that comment) — by now it's had the entire TTS/RVC round trip to
+        // finish, so this join is a no-op in every realistic case.
+        if (duck_thread.joinable()) duck_thread.join();
         play_blocking(path, is_wav ? "waveaudio" : "mpegvideo");
         DeleteFileA(path.c_str());
     }
