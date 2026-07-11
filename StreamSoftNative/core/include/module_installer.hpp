@@ -1,13 +1,5 @@
 #pragma once
 
-// Generic "Check & Install" downloader for optional modules (TTS/RVC) — see
-// CLAUDE.md §2. Downloads a manifest of zip parts over HTTPS (httplib, same
-// verified-cert client as twitch_auth.hpp) with a progress callback, then
-// extracts each zip via the Windows Shell's own zip-folder support
-// (IShellDispatch::NameSpace + Folder::CopyHere) — no new vcpkg zip
-// dependency (miniz/libzip) for this, Explorer already has it built in on
-// every Windows install.
-
 #include <crow/logging.h>
 #include <httplib.h>
 
@@ -22,11 +14,6 @@
 #include <thread>
 #include <vector>
 
-// See discord_presence.hpp's identical guard for why this has to come
-// before any of comdef.h/shellapi.h/shlobj.h/windows.h — they all pull in
-// <windows.h> transitively, and Asio (via crow.h elsewhere in this TU)
-// needs winsock2.h, not the legacy winsock.h a bare windows.h include pulls
-// in.
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -40,50 +27,34 @@
 #include <windows.h>
 
 #include "app_paths.hpp"
-#include "gpu_check.hpp"  // detect_cuda_wheel_tag()
-#include "twitch_auth.hpp"  // make_https_client()
+#include "gpu_check.hpp"
+#include "twitch_auth.hpp"
 
 namespace streamsoft {
 
 struct ModulePackagePart {
-    std::string url;  // full https URL, e.g. a GitHub Releases asset
+    std::string url;
 };
 
-// Zip: download prebuilt zip part(s), extract via Shell — used by TTS, whose
-// dependencies (edge-tts, fastapi) are the same on every machine.
-//
-// PipLive: bootstrap embeddable Python on the end user's own machine and
-// pip-install everything fresh from PyPI/pytorch.org — used by RVC, because
-// torch needs a CUDA build matched to *that machine's* driver
-// (detect_cuda_wheel_tag() in gpu_check.hpp), which a single fixed prebuilt
-// zip can't be. Trades a bigger install-time failure surface (network to
-// PyPI/pytorch.org, not just one GitHub asset) for actually being adaptive
-// and for never going stale relative to upstream torch/rvc-python releases.
 enum class ModuleInstallKind {
     Zip,
     PipLive,
 };
 
 struct ModuleManifest {
-    std::string name;                     // "tts" | "rvc" — REST path segment
-    std::filesystem::path install_dir;    // adapters/<name>
+    std::string name;
+    std::filesystem::path install_dir;
     ModuleInstallKind kind = ModuleInstallKind::Zip;
-    std::vector<ModulePackagePart> parts;  // Zip: downloaded+extracted in order
+    std::vector<ModulePackagePart> parts;
     bool requires_gpu = false;
     std::uint64_t required_disk_mb = 0;
-    std::uint64_t total_download_mb = 0;  // estimate shown before install starts
+    std::uint64_t total_download_mb = 0;
 
-    // PipLive only:
-    std::string python_version;             // embeddable Python to bootstrap, e.g. "3.10.11"
-    std::vector<std::string> pip_packages;  // installed after torch, plain `pip install <name>...`
-    std::string voice_model_url;            // small zip (ayaka.pth/ayaka.index) — no upstream source, hosted by us
+    std::string python_version;
+    std::vector<std::string> pip_packages;
+    std::string voice_model_url;
 };
 
-// TTS: real package uploaded to GitHub Releases on PRISSET/StreamSoftNative
-// (embeddable Python + adapters/tts/requirements.txt pip-installed +
-// adapters/tts/server.py, already in this repo — same "no pip-install in
-// front of the user" shape as the plan originally called for, since none of
-// TTS's dependencies are hardware-specific).
 inline const ModuleManifest& tts_module_manifest() {
     static const ModuleManifest m{
         "tts",
@@ -100,14 +71,6 @@ inline const ModuleManifest& tts_module_manifest() {
     return m;
 }
 
-// RVC: live pip install, adaptive to the machine's actual CUDA driver
-// version (see gpu_check.hpp). torch/torchaudio come straight from
-// download.pytorch.org, rvc-python/fastapi/uvicorn/pydantic straight from
-// PyPI — same real upstream sources as softforstream/rvc_service's own
-// requirements.txt. Only the ayaka voice model has no upstream source (it's
-// not a library, just one specific trained checkpoint) and is hosted as a
-// small separate GitHub release, kept deliberately tiny compared to the
-// ~5.7GB the full runtime would be if we tried to prebuild it ourselves.
 inline const ModuleManifest& rvc_module_manifest() {
     static const ModuleManifest m{
         "rvc",
@@ -130,14 +93,6 @@ inline const ModuleManifest* find_module_manifest(const std::string& name) {
     return nullptr;
 }
 
-// Lets core_app.hpp hook "a module just finished installing" to actually
-// launch that adapter's subprocess right away — without this, a module
-// installed after the app already started stays dark until the next full
-// restart, since core_app.hpp otherwise only spawns adapters once at
-// startup. One callback per module name is enough (core_app.hpp registers
-// exactly one for "tts" and one for "rvc" during its own setup). Same
-// lazy-registry shape as module_progress() above, just holding callbacks
-// instead of progress state.
 inline std::map<std::string, std::function<void()>>& module_installed_callbacks() {
     static std::map<std::string, std::function<void()>> registry;
     return registry;
@@ -166,7 +121,7 @@ enum class ModuleInstallState {
     Idle,
     Downloading,
     Extracting,
-    Installing,  // PipLive only: pip/subprocess steps running (no byte progress)
+    Installing,
     Installed,
     Failed,
 };
@@ -186,17 +141,14 @@ inline const char* module_state_name(ModuleInstallState s) {
 struct ModuleProgress {
     std::mutex mutex;
     ModuleInstallState state = ModuleInstallState::Idle;
-    int file_index = 0;   // 1-based, for display ("часть 1 из 2")
+    int file_index = 0;
     int file_count = 0;
     std::uint64_t bytes_downloaded = 0;
     std::uint64_t bytes_total = 0;
-    std::string current_step;  // PipLive only: human-readable stage ("Установка torch (cu121)…")
+    std::string current_step;
     std::string error;
 };
 
-// One tracker per module name, created on first access — same lazy-registry
-// shape as auth_prompt_state() in twitch_auth.hpp, just keyed by name since
-// there's more than one module.
 inline ModuleProgress& module_progress(const std::string& name) {
     static std::mutex registry_mutex;
     static std::map<std::string, std::unique_ptr<ModuleProgress>> registry;
@@ -208,21 +160,12 @@ inline ModuleProgress& module_progress(const std::string& name) {
     return *it->second;
 }
 
-// A module is "installed" once this marker exists — written only after every
-// part downloaded and extracted without error. More robust than checking for
-// specific files (which differ per module and might partially exist from a
-// half-finished install) as the single source of truth for the GUI's button
-// state.
 inline bool is_module_installed(const ModuleManifest& manifest) {
     return std::filesystem::exists(manifest.install_dir / ".streamsoft_installed");
 }
 
 namespace detail {
 
-// Splits "https://host[:port]/path?query" into ("https://host[:port]",
-// "/path?query") — httplib::Client's constructor wants the former, Get()
-// wants the latter. No existing helper in the codebase does this since
-// every other client here talks to one fixed, hardcoded host.
 inline std::pair<std::string, std::string> split_url(const std::string& url) {
     auto scheme_end = url.find("://");
     if (scheme_end == std::string::npos) return {url, "/"};
@@ -232,11 +175,6 @@ inline std::pair<std::string, std::string> split_url(const std::string& url) {
     return {url.substr(0, path_start), url.substr(path_start)};
 }
 
-// Streams one URL straight to disk with a progress callback — the same
-// download logic run_module_install()'s Zip path uses per-part, pulled out
-// so the PipLive path (embeddable Python zip, get-pip.py, voice model zip)
-// can reuse it for its own single-file downloads instead of duplicating the
-// httplib ceremony three times.
 inline bool download_file(const std::string& url, const std::filesystem::path& dest,
                            const std::function<void(std::uint64_t, std::uint64_t)>& on_progress,
                            std::string& error) {
@@ -269,11 +207,6 @@ inline bool download_file(const std::string& url, const std::filesystem::path& d
     return true;
 }
 
-// Runs one command line to completion, discarding its output — used for
-// pip/python invocations during the PipLive install, where the only thing
-// that matters is the exit code (stdout/stderr would just be pip's own
-// progress bars, not useful once mediated through our own stage-based
-// progress reporting). Returns false on launch failure or non-zero exit.
 inline bool run_subprocess_and_wait(const std::wstring& exe_path, const std::wstring& args,
                                      const std::filesystem::path& working_dir, std::string& error) {
     std::wstring cmd = L"\"" + exe_path + L"\" " + args;
@@ -307,13 +240,6 @@ inline bool run_subprocess_and_wait(const std::wstring& exe_path, const std::wst
 
 inline bool extract_zip_via_shell(const std::filesystem::path& zip_path_in, const std::filesystem::path& dest_dir_in,
                                    std::string& error) {
-    // IShellDispatch::NameSpace() silently returns null for a path that
-    // mixes '/' and '\' separators (verified: std::filesystem::exists()
-    // resolves the exact same string fine, since Win32 file APIs normalize
-    // separators — Shell Automation's string-based path parsing doesn't).
-    // Paths built from STREAMSOFT_*_DIR (a CMake variable, forward-slash by
-    // convention) concatenated via std::filesystem::path's operator/
-    // (native backslash) end up mixed, so this always needs to run.
     std::filesystem::path zip_path = std::filesystem::path(zip_path_in).make_preferred();
     std::filesystem::path dest_dir = std::filesystem::path(dest_dir_in).make_preferred();
 
@@ -360,9 +286,6 @@ inline bool extract_zip_via_shell(const std::filesystem::path& zip_path_in, cons
                     item_var.vt = VT_DISPATCH;
                     item_var.pdispVal = items;
 
-                    // FOF_NO_UI = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI |
-                    // FOF_NOCONFIRMMKDIR — no progress dialog, no "are you sure",
-                    // no error popups; failures just come back as an HRESULT.
                     VARIANT opt{};
                     opt.vt = VT_I4;
                     opt.lVal = FOF_NO_UI;
@@ -386,7 +309,7 @@ inline bool extract_zip_via_shell(const std::filesystem::path& zip_path_in, cons
     return ok;
 }
 
-}  // namespace detail
+}
 
 using FailFn = std::function<void(const std::string&)>;
 using SetStateFn = std::function<void(ModuleInstallState)>;
@@ -449,8 +372,6 @@ inline void run_zip_install(const ModuleManifest& manifest, ModuleProgress& prog
 
 namespace detail {
 
-// "3.10.11" -> "310" (the bit embeddable Python uses in pythonXY[Z]._pth /
-// pythonXY.dll) — just the first two dot-separated components, digits only.
 inline std::string python_abi_tag(const std::string& version) {
     std::string tag;
     int dots = 0;
@@ -464,12 +385,8 @@ inline std::string python_abi_tag(const std::string& version) {
     return tag;
 }
 
-}  // namespace detail
+}
 
-// RVC's install path: bootstrap a fresh embeddable Python on this specific
-// machine, then pip-install torch matched to its actual CUDA driver — see
-// the ModuleManifest::kind comment for why this trades a bigger failure
-// surface for genuinely being adaptive instead of one fixed prebuilt zip.
 inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress& progress, const SetStateFn& set_state,
                                   const FailFn& fail) {
     auto set_step = [&](const std::string& step) {
@@ -489,7 +406,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
     std::filesystem::path tmp_dir = manifest.install_dir.parent_path() / (manifest.name + "_download_tmp");
     std::filesystem::create_directories(tmp_dir, ec);
 
-    // 1. Embeddable Python — python.org's own official distribution.
     set_step("Скачивание Python " + manifest.python_version + "...");
     {
         std::lock_guard<std::mutex> lock(progress.mutex);
@@ -522,9 +438,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
     std::filesystem::remove(python_zip, ec);
     set_state(ModuleInstallState::Downloading);
 
-    // 2. Enable `import site` in the ._pth file — embeddable Python ships
-    // with it commented out, which keeps pip (and anything it installs into
-    // Lib/site-packages) invisible to the interpreter.
     std::filesystem::path pth_path = venv_scripts / ("python" + detail::python_abi_tag(manifest.python_version) + "._pth");
     {
         std::ifstream pth_in(pth_path, std::ios::binary);
@@ -538,8 +451,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
 
     std::filesystem::path python_exe = venv_scripts / "python.exe";
 
-    // 3. pip, via get-pip.py (bootstrap.pypa.io) — the embeddable
-    // distribution doesn't include it.
     set_step("Установка pip...");
     {
         std::lock_guard<std::mutex> lock(progress.mutex);
@@ -560,11 +471,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
         return;
     }
     set_state(ModuleInstallState::Installing);
-    // Pinned, not "whatever's latest": rvc-python pins omegaconf==2.0.6,
-    // whose metadata pip >=24.1 rejects outright ("invalid metadata: .*
-    // suffix can only be used with == or != operators") — verified this
-    // exact failure live, pip 23.3.2 is the last version before that
-    // stricter PEP 440 validation shipped and installs it fine.
     if (!detail::run_subprocess_and_wait(python_exe.wstring(), L"get-pip.py \"pip==23.3.2\" --no-warn-script-location",
                                           venv_scripts, error)) {
         fail("Не удалось установить pip: " + error);
@@ -572,7 +478,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
     }
     std::filesystem::remove(get_pip, ec);
 
-    // 4. torch/torchaudio matched to this machine's actual CUDA driver.
     {
         std::lock_guard<std::mutex> lock(progress.mutex);
         progress.file_index = 3;
@@ -587,7 +492,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
         return;
     }
 
-    // 5. rvc-python + the small web-server deps — straight from PyPI.
     {
         std::lock_guard<std::mutex> lock(progress.mutex);
         progress.file_index = 4;
@@ -601,7 +505,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
         return;
     }
 
-    // 6. The one thing with no upstream source — the actual trained voice.
     if (!manifest.voice_model_url.empty()) {
         {
             std::lock_guard<std::mutex> lock(progress.mutex);
@@ -634,10 +537,6 @@ inline void run_pip_live_install(const ModuleManifest& manifest, ModuleProgress&
     set_step("");
 }
 
-// Runs on a detached background thread — see install_module_async(). All
-// state changes go through the module's ModuleProgress under its mutex so
-// GET /api/modules/<name>/progress (polled from the GUI, same pattern as
-// /api/twitch/auth-status) always sees a consistent snapshot.
 inline void run_module_install(ModuleManifest manifest) {
     auto& progress = module_progress(manifest.name);
 
@@ -681,21 +580,17 @@ inline void run_module_install(ModuleManifest manifest) {
     fire_module_installed_callback(manifest.name);
 }
 
-// Fire-and-forget: REST handler calls this and returns immediately, the GUI
-// polls progress separately. Detached because the handler's lifetime ends
-// long before installation does — nothing needs to join this thread, only
-// read its published progress.
 inline bool install_module_async(const ModuleManifest& manifest) {
     auto& progress = module_progress(manifest.name);
     {
         std::lock_guard<std::mutex> lock(progress.mutex);
         if (progress.state == ModuleInstallState::Downloading || progress.state == ModuleInstallState::Extracting ||
             progress.state == ModuleInstallState::Installing) {
-            return false;  // already running
+            return false;
         }
     }
     std::thread(run_module_install, manifest).detach();
     return true;
 }
 
-}  // namespace streamsoft
+}

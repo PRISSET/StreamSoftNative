@@ -2,14 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import StreamSoftGui
 
-// Canvas beats "two rotated Rectangles" for a chevron — that approach needs
-// exact rotation/transformOrigin math to land both bars on the same point,
-// and a small error there is exactly what produced the lopsided "mutant"
-// arrow. A Canvas path is just three coordinates, unambiguous.
-
-// Draws its own chevron instead of relying on the native style's arrow
-// primitive — the Qt Widgets version silently had no visible arrow at all
-// and the cause was never pinned down, so this sidesteps the whole question.
 ComboBox {
     id: root
     font.pixelSize: Theme.fontLg
@@ -36,8 +28,6 @@ ComboBox {
         elide: Text.ElideRight
     }
 
-    // Hand-drawn chevron instead of a Unicode glyph — the "⌄" character
-    // isn't covered by the fallback font here and rendered as a plain "v".
     indicator: Canvas {
         id: chevron
         width: 12
@@ -96,12 +86,6 @@ ComboBox {
         highlighted: root.highlightedIndex === index
 
         contentItem: Text {
-            // `model` here is a list of {text, value} objects (see textRole
-            // usage in every GlassComboBox instance) — modelData is the
-            // *whole object*, not a string, so it must be indexed by
-            // textRole. Assigning the raw object to `text` silently
-            // stringifies to "" instead of throwing, which is why this
-            // rendered as a blank row before.
             text: root.textRole ? itemDelegate.modelData[root.textRole] : itemDelegate.modelData
             color: Theme.text
             font: root.font

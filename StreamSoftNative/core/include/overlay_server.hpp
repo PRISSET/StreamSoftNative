@@ -32,12 +32,6 @@
 
 namespace streamsoft {
 
-// Serves the OBS-facing overlay pages (/, /chat, /events) and static assets,
-// broadcasts chat/event JSON to every connected browser source over /ws, and
-// exposes the same REST API surface as softforstream/overlay_server.py
-// (/api/settings, /api/media/*, /api/commands/*, /api/rvc/* stub) — this is
-// the contract the Qt settings GUI (gui/) talks to, same as the Python
-// settings.html/js did against the Python server.
 class OverlayServer {
 public:
     OverlayServer(int port, std::filesystem::path web_dir)
@@ -56,10 +50,6 @@ public:
 
     std::optional<std::string> match_command(const std::string& text) { return commands_.match(text); }
 
-    // Called from the Twitch/YouTube chat callbacks *before* the normal
-    // broadcast_chat/TTS path — a successful vote is consumed silently
-    // (see poll.hpp's try_vote() comment) instead of showing up as a
-    // regular chat line.
     bool try_poll_vote(const std::string& username, const std::string& text) {
         bool voted = poll_.try_vote(username, text);
         if (voted) broadcast_poll_update();
@@ -72,31 +62,13 @@ public:
         broadcast_raw(payload.dump());
     }
 
-    // One point per qualifying chat message — called from the normal
-    // (non-vote, non-song-request) chat path in core_app.hpp.
     void award_points_for_message(const std::string& username) { points_.award_for_message(username); }
 
-    // Set once at startup from ConnectionsConfig::twitch_channel — the
-    // streamer's own messages come through the exact same IRC feed as
-    // everyone else's (Twitch echoes your own chat back to you), so without
-    // this the broadcaster would need to farm their own points before their
-    // own "!song" works. Case-insensitive since Twitch usernames are.
     void set_broadcaster_name(const std::string& name) { broadcaster_name_ = name; }
 
-    // Set once from core_app.hpp after the queue is constructed — lets
-    // try_builtin_command()'s "!help"/"!points" replies and the periodic
-    // points/song reminder (see song_reminder_text()) actually reach Twitch
-    // chat the same way try_song_request()'s replies do. YouTube has no
-    // outgoing channel at all (read-only worker), so these two features are
-    // Twitch-only until that changes.
     void set_twitch_outgoing(OutgoingQueue* queue) { twitch_outgoing_ = queue; }
     OutgoingQueue* twitch_outgoing() const { return twitch_outgoing_; }
 
-    // Small always-on informational commands, checked before !song/chat
-    // commands — "!help" so viewers can discover !song/!points/poll voting
-    // without having to be told, "!points" so they can check their balance
-    // without waiting for the periodic reminder. std::nullopt means it
-    // wasn't one of these, so normal chat handling should proceed.
     std::optional<std::string> try_builtin_command(const std::string& username, const std::string& text) {
         std::string lower = trim(text);
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -123,10 +95,6 @@ public:
         return std::nullopt;
     }
 
-    // Called from a background timer in core_app.hpp — nullopt means "don't
-    // send anything this round" (feature currently off), so the reminder
-    // just quietly skips instead of advertising something disabled. Kept to
-    // a long interval by the caller specifically so this never reads as spam.
     std::optional<std::string> song_reminder_text() {
         std::lock_guard<std::mutex> lock(runtime_mutex_);
         if (!runtime_.song_requests_enabled) return std::nullopt;
@@ -135,12 +103,6 @@ public:
                std::to_string(runtime_.song_request_cost) + " баллов). Проверить баланс — !points";
     }
 
-    // "!song <link>" — returns a reply string on any outcome (added to
-    // queue, rejected for a bad link, rejected for insufficient points) so
-    // callers can push it back to Twitch chat the same way match_command()
-    // replies do; std::nullopt means the message wasn't a song request at
-    // all (feature off, or doesn't start with "!song "), so normal chat
-    // handling should proceed as usual.
     std::optional<std::string> try_song_request(const std::string& username, const std::string& text) {
         static const std::string kPrefix = "!song ";
 
@@ -182,9 +144,6 @@ public:
 
     void broadcast_now_playing() { broadcast_raw(now_playing_payload().dump()); }
 
-    // Shared by the broadcast path and the WS onopen greeting so a freshly
-    // connecting /nowplaying page and a live one always agree on volume —
-    // song_queue_.status() alone doesn't know about runtime_ settings.
     crow::json::wvalue now_playing_payload() {
         auto payload = song_queue_.status();
         payload["type"] = "now_playing";
@@ -193,15 +152,8 @@ public:
         return payload;
     }
 
-    // Set once from main() after the TTS worker exists — lets live settings
-    // changes from the GUI (voice/rate/say_author) apply immediately, same
-    // as overlay_server.py calling self._tts.set_voice_ru() etc. inline.
     void set_tts_worker(tts::TtsWorker* tts) { tts_ = tts; }
 
-    // Set once at startup (and again whenever the RVC adapter gets launched
-    // after a fresh Check&Install, see core_app.hpp) — 0 means "adapter not
-    // running", in which case /api/rvc/health degrades to available:false
-    // instead of trying to reach a nonexistent port.
     void set_rvc_port(int port) { rvc_port_ = port; }
 
     void broadcast_chat(const std::string& platform, const std::string& author, const std::string& text) {
@@ -247,9 +199,6 @@ private:
         return false;
     }
 
-    // Route params come in as a single path segment (no '/'), but a segment
-    // can still literally be ".." — reject anything that isn't a plain
-    // filename before touching the filesystem.
     static bool is_safe_segment(const std::string& s) {
         return !s.empty() && s.find("..") == std::string::npos && s.find('/') == std::string::npos &&
                s.find('\\') == std::string::npos;
@@ -318,13 +267,6 @@ private:
                 return crow::response(c.to_json().dump());
             });
 
-        // Crow runs multithreaded — without this lock, two POSTs landing
-        // close together (e.g. tabbing from the Client ID field straight to
-        // the channel field, each firing its own save()) could both
-        // load() the file before either save()s, and whichever writes last
-        // would silently overwrite the other's change. This is the "Client
-        // ID sometimes doesn't save" bug: nothing wrong with the field
-        // itself, just two save-the-whole-file requests racing.
         CROW_ROUTE(app_, "/api/connections")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -356,10 +298,6 @@ private:
                 return crow::response(resp.dump());
             });
 
-        // Polled by the GUI (ConnectionsPage.qml / Main.qml banner) every
-        // few seconds — see ScopedAuthPrompt in twitch_auth.hpp for why
-        // this exists at all: the device-code flow's verification_uri and
-        // user_code have nowhere else to surface in a windowed GUI build.
         CROW_ROUTE(app_, "/api/twitch/auth-status")
             .methods(crow::HTTPMethod::Get)([](const crow::request&) {
                 auto& s = streamsoft::twitch::auth_prompt_state();
@@ -374,10 +312,6 @@ private:
                 return crow::response(resp.dump());
             });
 
-        // Fires the device-code flow immediately after the GUI saves a
-        // Client ID, instead of waiting for the Twitch worker threads
-        // (which only start once, at the next full app launch) to get to
-        // it — see run_manual_auth() in twitch_auth.hpp.
         CROW_ROUTE(app_, "/api/twitch/start-auth")
             .methods(crow::HTTPMethod::Post)([](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -399,13 +333,6 @@ private:
     }
 
     void setup_obs_routes() {
-        // File-based by default: edits OBS's own scene collection JSON
-        // directly (see obs_scene_file.hpp) instead of going through
-        // obs-websocket — nobody's going to find "Tools -> WebSocket Server
-        // Settings -> Enable" on their own, and OBS 28+ ships that server
-        // *off* by default. The trade-off is OBS has to be closed for this
-        // to work (editing config out from under a running instance risks
-        // corrupting it), which the handler checks and refuses otherwise.
         CROW_ROUTE(app_, "/api/obs/connect")
             .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
                 auto result = streamsoft::obs::ensure_browser_sources_via_file(port_);
@@ -423,9 +350,6 @@ private:
                 return crow::response(resp.dump());
             });
 
-        // obs-websocket path kept as a fallback for anyone who *has*
-        // enabled it (e.g. it lets sources update while OBS stays open) —
-        // not used by the GUI's primary button, but reachable directly.
         CROW_ROUTE(app_, "/api/obs/connect-websocket")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -504,20 +428,10 @@ private:
                     if (body.has("rvc_index_rate")) { runtime_.rvc_index_rate = body["rvc_index_rate"].d(); rvc_touched = true; }
                     if (body.has("rvc_protect")) { runtime_.rvc_protect = body["rvc_protect"].d(); rvc_touched = true; }
                     if (body.has("rvc_f0method")) { runtime_.rvc_f0method = std::string(body["rvc_f0method"].s()); rvc_touched = true; }
-                    // Without this, toggling RVC on/off or dragging its
-                    // sliders saved to runtime_settings.json and reflected
-                    // back in the UI just fine, but speak() never found out
-                    // — confirmed live: adapter healthy, toggle "on", still
-                    // only ever played the plain TTS voice.
                     if (rvc_touched && tts_) {
                         tts_->set_rvc_settings(runtime_.rvc_enabled, runtime_.rvc_scope, runtime_.rvc_pitch,
                                                 runtime_.rvc_index_rate, runtime_.rvc_protect, runtime_.rvc_f0method);
                     }
-
-                    bool ducking_touched = false;
-                    if (body.has("ducking_enabled")) { runtime_.ducking_enabled = body["ducking_enabled"].b(); ducking_touched = true; }
-                    if (body.has("ducking_percent")) { runtime_.ducking_percent = static_cast<int>(body["ducking_percent"].i()); ducking_touched = true; }
-                    if (ducking_touched && tts_) tts_->set_ducking(runtime_.ducking_enabled, runtime_.ducking_percent);
 
                     if (body.has("song_requests_enabled")) runtime_.song_requests_enabled = body["song_requests_enabled"].b();
                     if (body.has("song_request_cost")) runtime_.song_request_cost = static_cast<int>(body["song_request_cost"].i());
@@ -533,9 +447,6 @@ private:
                 if (body.has("mute")) moderation_.mute(std::string(body["mute"].s()));
                 if (body.has("unmute")) moderation_.unmute(std::string(body["unmute"].s()));
 
-                // Lets a volume change apply to whatever's already playing in
-                // /nowplaying immediately, instead of waiting for the next
-                // track to pick up the new value.
                 if (song_volume_touched) broadcast_now_playing();
 
                 broadcast_config();
@@ -601,7 +512,6 @@ private:
                 std::string response = body.has("response") ? std::string(body["response"].s()) : "";
                 int cooldown = body.has("cooldown") ? static_cast<int>(body["cooldown"].i()) : 15;
 
-                // trim
                 auto trim = [](std::string s) {
                     auto not_space = [](unsigned char c) { return !std::isspace(c); };
                     s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
@@ -644,10 +554,6 @@ private:
     }
 
     void setup_rvc_routes() {
-        // Real proxy to the adapter core launched itself (see
-        // rvc_launcher.hpp / core_app.hpp) — degrades to available:false if
-        // the adapter isn't installed/running yet, same graceful-degrade
-        // contract as TTS (CLAUDE.md §4), instead of failing the whole app.
         CROW_ROUTE(app_, "/api/rvc/health")
         ([this] {
             crow::json::wvalue resp;
@@ -686,10 +592,6 @@ private:
     }
 
     void setup_modules_routes() {
-        // Pre-install requirements check for the optional RVC module (see
-        // CLAUDE.md §2 "Check & Install") — used by RvcPage.qml before it
-        // ever offers a download button. 8GB matches the ~6.6GB real
-        // package (venv+CUDA torch+models) plus headroom.
         CROW_ROUTE(app_, "/api/modules/rvc/requirements")
         ([] {
             static constexpr std::uint64_t kRvcRequiredDiskMb = 8192;
@@ -712,9 +614,6 @@ private:
             return crow::response(resp.dump());
         });
 
-        // GET .../status: what the GUI polls on page load to decide which of
-        // the four install-card states to show (see module_installer.hpp's
-        // ModuleInstallState + CLAUDE.md §2's "Check & Install" steps).
         CROW_ROUTE(app_, "/api/modules/<string>/status")
         ([](const std::string& name) {
             const auto* manifest = streamsoft::find_module_manifest(name);
@@ -779,9 +678,6 @@ private:
         });
     }
 
-    // Powers the GUI's "Обновления" page — same GitHub Releases data
-    // auto_update.hpp already checks in the background, just surfaced for
-    // the user to read instead of acted on silently.
     void setup_updates_routes() {
         CROW_ROUTE(app_, "/api/updates")
         ([] {
@@ -802,12 +698,6 @@ private:
             return crow::response(resp.dump());
         });
 
-        // Plain text, not JSON — this is streamsoft.log's tail verbatim
-        // (see file_logger.hpp), meant to be read by a human (or curl) to
-        // see what a real install actually logged, since the shipped app
-        // has no console for CROW_LOG output to land on otherwise. ?lines=
-        // defaults to the last 200 lines, capped at 2000 so a request can't
-        // be used to slowly read the whole (up to 2MB) file over and over.
         CROW_ROUTE(app_, "/api/log")
         ([](const crow::request& req) {
             int want_lines = 200;
@@ -851,9 +741,6 @@ private:
                 poll_.start(question, options);
                 broadcast_poll_update();
 
-                // Viewers only know !1/!2 vote syntax if we tell them —
-                // announced once here rather than repeated per-vote, so it
-                // doesn't turn into chat noise while the poll is running.
                 if (twitch_outgoing_) {
                     std::string announcement = "Опрос: " + question + " — голосуй в чате: ";
                     for (size_t i = 0; i < options.size(); ++i) {
@@ -919,9 +806,6 @@ private:
                 return crow::response(R"({"ok": true})");
             });
 
-        // Exercises the real TtsWorker::speak() path (including the RVC
-        // conversion step, if enabled) without needing a live Twitch/YouTube
-        // connection — same idea as /api/test-chat above, just for TTS.
         CROW_ROUTE(app_, "/api/test-tts")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 if (!tts_) return crow::response(503, R"({"ok": false, "error": "tts not running"})");
@@ -932,9 +816,6 @@ private:
                 return crow::response(R"({"ok": true})");
             });
 
-        // Exercises try_song_request() end-to-end (points spend + link
-        // parsing + queue) the same way a real chat message would, without
-        // needing a live Twitch/YouTube connection to trigger it.
         CROW_ROUTE(app_, "/api/test-song")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -948,10 +829,6 @@ private:
                 return crow::response(resp.dump());
             });
 
-        // Exercises try_builtin_command() (!help, !points) without needing a
-        // live chat connection — mirrors /api/test-song. Deliberately never
-        // touches twitch_outgoing_, so this can't post to real chat even
-        // while a real Twitch connection is live.
         CROW_ROUTE(app_, "/api/test-command")
             .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
                 auto body = crow::json::load(req.body);
@@ -999,17 +876,8 @@ private:
                 clients_.erase(&conn);
             })
             .onmessage([this](crow::websocket::connection&, const std::string& text, bool) {
-                // The only overlay page that actually sends anything back:
-                // nowplaying.html's YouTube/SoundCloud embed players report
-                // "song_ended" here when a track finishes, so the queue can
-                // advance — everything else just receives.
                 auto msg = crow::json::load(text);
                 if (msg && msg.has("type") && std::string(msg["type"].s()) == "song_ended") {
-                    // "reason" is only present when the embed player errored
-                    // out (bad id / embedding disabled / region-locked)
-                    // rather than actually finishing — logged so a track
-                    // that never audibly plays is diagnosable from core's
-                    // own log instead of requiring the browser console.
                     if (msg.has("reason")) {
                         CROW_LOG_WARNING << "song_queue: track ended abnormally (" << msg["reason"].s() << ")";
                     }
@@ -1099,4 +967,4 @@ private:
     std::deque<std::string> chat_history_;
 };
 
-} // namespace streamsoft
+}

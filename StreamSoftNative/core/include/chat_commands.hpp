@@ -1,9 +1,5 @@
 #pragma once
 
-// Mirrors softforstream/chat_commands.py — same JSON file format
-// (chat_commands.json), same trigger normalization (lowercase, "!" prefix),
-// same cooldown behavior.
-
 #include <crow/json.h>
 
 #include <algorithm>
@@ -118,9 +114,6 @@ public:
         save_unlocked();
     }
 
-    // Returns the response text if `text` starts with a known, enabled,
-    // off-cooldown trigger — same first-match-wins semantics as the Python
-    // reference.
     std::optional<std::string> match(const std::string& text) {
         std::string stripped = trim(text);
         if (stripped.empty()) return std::nullopt;
@@ -164,4 +157,4 @@ private:
     std::map<std::string, std::chrono::steady_clock::time_point> last_used_;
 };
 
-} // namespace streamsoft
+}

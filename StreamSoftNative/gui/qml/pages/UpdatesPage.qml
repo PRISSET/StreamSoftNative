@@ -2,10 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
-// Reads GET /api/updates (core/include/overlay_server.hpp ->
-// auto_update.hpp's fetch_release_history()) — the same GitHub Releases
-// data the background auto-updater already checks, just shown to the user
-// instead of only acted on silently.
 ColumnLayout {
     id: root
     spacing: 18

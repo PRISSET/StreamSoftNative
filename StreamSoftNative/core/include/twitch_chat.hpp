@@ -1,8 +1,5 @@
 #pragma once
 
-// Twitch IRC chat reader over TLS, mirroring softforstream/twitch_chat.py —
-// including the outgoing PRIVMSG write path for chat-command replies.
-
 #include "app_paths.hpp"
 
 #include <asio.hpp>
@@ -44,10 +41,6 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
     asio::connect(stream.next_layer(), endpoints);
     stream.handshake(asio::ssl::stream_base::client);
 
-    // The read loop (this function, main thread) and the writer thread below
-    // both touch `stream` — serialize actual socket writes through this
-    // mutex so PONG replies and PRIVMSG command replies never interleave
-    // their bytes on the wire (OpenSSL requires one writer at a time).
     std::mutex write_mutex;
     auto send_line = [&](const std::string& line) {
         std::string data = line + "\r\n";
@@ -128,10 +121,6 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
     }
 }
 
-// Blocking; call from its own thread. Retries forever with a 15s backoff,
-// same as the Python reference — meant to be resilient to transient
-// network/auth hiccups without taking the whole process down. `outgoing`
-// may be null if no chat-command replies need to be sent.
 inline void watch_twitch(const std::string& channel, const std::string& client_id, const ChatCallback& on_message,
                           OutgoingQueue* outgoing = nullptr) {
     while (true) {
@@ -140,13 +129,6 @@ inline void watch_twitch(const std::string& channel, const std::string& client_i
             std::string nick = get_username(client_id, access_token);
             connect_and_listen(channel, nick, access_token, on_message, outgoing);
         } catch (const AuthRejected& e) {
-            // Twitch itself rejected the token (revoked/rotated server-side,
-            // not just locally "expired") — get_access_token()'s cached-token
-            // fast path has no way to know that on its own, so without this
-            // it would keep handing out the same dead token forever. Wiping
-            // the cache forces the next get_access_token() call past that
-            // fast path into refresh/device-code re-auth (which is what
-            // actually surfaces the reconnect banner in the GUI).
             CROW_LOG_ERROR << "Twitch отклонил токен, сбрасываю кэш и повторю авторизацию через 15 секунд: "
                             << e.what();
             invalidate_cached_token();
@@ -158,4 +140,4 @@ inline void watch_twitch(const std::string& channel, const std::string& client_i
     }
 }
 
-} // namespace streamsoft::twitch
+}

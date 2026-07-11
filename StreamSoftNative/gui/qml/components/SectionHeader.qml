@@ -9,9 +9,6 @@ ColumnLayout {
     Layout.bottomMargin: 4
     spacing: 4
 
-    // Headers sit directly on the raw app backdrop (not inside a tinted
-    // GlassCard) — a soft drop shadow keeps them readable against busy or
-    // bright wallpapers instead of only the dark ones.
     ColumnLayout {
         Layout.fillWidth: true
         spacing: 4

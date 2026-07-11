@@ -2,9 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
-// Zрители голосуют бросая "!1"/"!2"/... в чат (see core/include/poll.hpp) —
-// this page just starts/stops the poll and shows the live tally, the
-// actual counting happens in core regardless of whether this page is open.
 ColumnLayout {
     id: root
     spacing: 18

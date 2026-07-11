@@ -2,12 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
-// "Check & Install" card for an optional module (TTS/RVC) — see
-// CLAUDE.md §2 and core/include/module_installer.hpp. Polls
-// GET /api/modules/<name>/status on a slow timer normally, switches to a
-// fast GET .../progress poll only while a download/extract is actually
-// running, and posts .../install to kick one off. One component shared by
-// both TTS and RVC sections of VoicePage.qml instead of duplicating this.
 GlassCard {
     id: root
     property string moduleName: ""
@@ -27,9 +21,6 @@ GlassCard {
     property string errorMsg: ""
 
     readonly property bool busy: state === "downloading" || state === "extracting" || state === "installing"
-    // "installing" (RVC's live pip install) has no byte-accurate progress —
-    // each pip/subprocess stage just advances fileIndex, so the bar shows
-    // coarse "step X of N" progress instead of a byte count there.
     readonly property real percent: state === "installing"
         ? (fileCount > 0 ? (fileIndex / fileCount) * 100 : 0)
         : (bytesTotal > 0 ? (bytesDownloaded / bytesTotal) * 100 : 0)

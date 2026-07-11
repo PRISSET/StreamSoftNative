@@ -1,16 +1,5 @@
 #pragma once
 
-// Packaged installs ship web/, certs/, adapters/tts, adapters/rvc as
-// siblings of the exe (see installer/streamsoft.iss) — every STREAMSOFT_*_DIR
-// / STREAMSOFT_CACERT_PATH macro (core/CMakeLists.txt, gui/CMakeLists.txt)
-// points straight into the dev source tree at compile time, which only ever
-// worked because nobody had built a real installer yet (see CLAUDE.md §8's
-// "Дев-тайм only" note on STREAMSOFT_WEB_DIR — this is exactly the follow-up
-// it flagged). This resolves each resource against the exe's own directory
-// first, falling back to the compile-time dev path when the packaged copy
-// isn't there, so a dev build run straight from build/gui/Release still
-// works with zero copy step.
-
 #include <filesystem>
 #include <string>
 
@@ -44,15 +33,6 @@ inline std::string resolve_resource_file(const std::string& packaged_relative, c
     return dev_absolute;
 }
 
-// connections.json/runtime_settings.json/twitch_token.json/chat_commands.json
-// are all plain cwd-relative paths (see connections_config.hpp etc.) — fine
-// for a dev checkout, broken for a real install: Program Files isn't
-// writable without elevation, and a Start Menu/autostart launch's cwd isn't
-// reliably the install directory anyway. Call once at startup, before any
-// config loads. Only switches cwd to the per-user AppData folder when
-// connections.json isn't already sitting in the current directory, so an
-// existing dev setup (or an already-configured install someone's used
-// before this existed) never gets silently orphaned from its saved config.
 inline void ensure_writable_config_cwd() {
     if (std::filesystem::exists("connections.json")) return;
 
@@ -67,4 +47,4 @@ inline void ensure_writable_config_cwd() {
     SetCurrentDirectoryW(dir.c_str());
 }
 
-}  // namespace streamsoft
+}

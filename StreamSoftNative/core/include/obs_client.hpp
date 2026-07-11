@@ -1,12 +1,5 @@
 #pragma once
 
-// obs-websocket v5 client — no OBS plugin needed, OBS 28+ ships this
-// protocol built in (Tools -> WebSocket Server Settings). Handles the
-// Hello/Identify auth handshake and blocking request/response, then a
-// higher-level ensure_browser_sources() that creates or updates all four
-// overlay Browser Sources (/chat, /events, /poll, /nowplaying) sized to the
-// current canvas.
-
 #include <crow/json.h>
 #include <crow/logging.h>
 #include <ixwebsocket/IXWebSocket.h>
@@ -38,7 +31,6 @@ inline std::string base64_encode(const unsigned char* data, size_t len) {
     return result;
 }
 
-// obs-websocket auth: base64(sha256(base64(sha256(password + salt)) + challenge))
 inline std::string sha256_base64(const std::string& input) {
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int hash_len = 0;
@@ -52,15 +44,6 @@ inline std::string sha256_base64(const std::string& input) {
 
 class ObsClient {
 public:
-    // Native sizes for all four widget sources — independent of canvas
-    // resolution, see the comment on ensure_browser_sources() below. Each
-    // page CSS-positions its own content with `position: fixed` at a fixed
-    // pixel offset (see style.css), which works at any viewport size, so
-    // these just need to be "big enough" for that content's worst case:
-    // Chat fits MAX_BUBBLES (8, see app.js) stacked bubbles, Alerts fits a
-    // couple of concurrently-visible event cards, Poll fits its max of 9
-    // options (see poll.hpp's start()), Now Playing matches the player's
-    // natural 16:9 aspect.
     static constexpr int kChatWidth = 940;
     static constexpr int kChatHeight = 960;
     static constexpr int kAlertsWidth = 820;
@@ -72,7 +55,6 @@ public:
 
     ~ObsClient() { ws_.stop(); }
 
-    // Blocking. Throws std::runtime_error on any failure to connect/auth.
     void connect(const std::string& host = "127.0.0.1", int port = 4455, const std::string& password = "") {
         ws_.setUrl("ws://" + host + ":" + std::to_string(port));
         ws_.disableAutomaticReconnection();
@@ -132,16 +114,6 @@ public:
         return d_field["responseData"];
     }
 
-    // Creates (or updates, if already present) four Browser Sources in the
-    // current scene — /chat, /events, /poll, /nowplaying — each sized to its
-    // own native widget size (see the k*Width/k*Height constants above),
-    // not the stream canvas. Sizing a small persistent widget to the full
-    // canvas left the actual content a tiny, often-blurry postage stamp
-    // inside a huge transform box, with no natural way to resize/reposition
-    // it in OBS without fighting that mismatch — a fixed native size means
-    // what you see in OBS's Properties/Transform is the widget itself,
-    // scalable and positionable the normal way, same as any image/video
-    // source.
     void ensure_browser_sources(int overlay_port) {
         auto scenes = request("GetSceneList");
         std::string scene_name = std::string(scenes["currentProgramSceneName"].s());
@@ -175,7 +147,7 @@ private:
         settings["width"] = width;
         settings["height"] = height;
         settings["reroute_audio"] = false;
-        settings["shutdown"] = false; // "Shutdown source when not visible" — must stay off or the WS drops on scene switch
+        settings["shutdown"] = false;
 
         if (already_exists) {
             crow::json::wvalue req;
@@ -220,7 +192,7 @@ private:
             if (!payload || !payload.has("op")) return;
             int op = static_cast<int>(payload["op"].i());
 
-            if (op == 0) { // Hello
+            if (op == 0) {
                 crow::json::wvalue identify;
                 identify["rpcVersion"] = 1;
                 identify["eventSubscriptions"] = 0;
@@ -243,11 +215,11 @@ private:
                 frame["op"] = 1;
                 frame["d"] = std::move(identify);
                 ws_.send(frame.dump());
-            } else if (op == 2) { // Identified
+            } else if (op == 2) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 identified_ = true;
                 cv_.notify_all();
-            } else if (op == 7) { // RequestResponse
+            } else if (op == 7) {
                 std::string request_id = std::string(payload["d"]["requestId"].s());
                 std::lock_guard<std::mutex> lock(mutex_);
                 pending_[request_id] = msg->str;
@@ -268,4 +240,4 @@ private:
     std::atomic<int> request_counter_{0};
 };
 
-} // namespace streamsoft::obs
+}

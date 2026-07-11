@@ -1,11 +1,5 @@
 #pragma once
 
-// In-chat polls: viewers vote by typing !1 / !2 / !3 ... while a poll is
-// active, one vote per username (voting again just moves your existing
-// vote, doesn't double-count) — same mutex-guarded-state shape as
-// CommandsStore's match(), just in-memory only since a poll is inherently
-// a single-session, not-worth-persisting-to-disk thing.
-
 #include <crow/json.h>
 
 #include <cctype>
@@ -37,24 +31,18 @@ public:
         return active_;
     }
 
-    // Returns true if `text` was consumed as a vote — callers use this to
-    // skip the normal chat broadcast/TTS-read path for it (a chat flooded
-    // with bare "!1"/"!2" isn't meant to be displayed or read aloud one by
-    // one). Only a bare "!<digit>" counts, "!1abc" or "!12" don't — keeps
-    // this from colliding with actual chat commands that happen to start
-    // the same way.
     bool try_vote(const std::string& username, const std::string& text) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!active_) return false;
         if (text.size() != 2 || text[0] != '!') return false;
         if (!std::isdigit(static_cast<unsigned char>(text[1]))) return false;
 
-        int choice = text[1] - '0' - 1; // "!1" -> option index 0
+        int choice = text[1] - '0' - 1;
         if (choice < 0 || choice >= static_cast<int>(options_.size())) return false;
 
         auto it = voters_.find(username);
         if (it != voters_.end()) {
-            if (it->second == choice) return true; // same vote again, no-op
+            if (it->second == choice) return true;
             votes_[it->second]--;
         }
         votes_[choice]++;
@@ -88,4 +76,4 @@ private:
     std::unordered_map<std::string, int> voters_;
 };
 
-}  // namespace streamsoft
+}

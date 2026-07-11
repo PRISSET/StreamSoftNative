@@ -127,12 +127,6 @@ ColumnLayout {
             subtitle: "То же самое, что летит в OBS — прямо здесь, без браузера."
         }
 
-        // Alert/chat stage — both alerts and chat test messages show up
-        // here and auto-hide, rather than chat piling up in a separate
-        // always-growing list underneath. Alert mirrors overlay/app.js's
-        // addEventAlert() (gif + nickname); chat mirrors addChatBubble()
-        // (author + text), just as a single transient bubble instead of a
-        // scrolling feed — this is a quick preview, not the real /chat.
         Rectangle {
             id: alertStage
             Layout.fillWidth: true
@@ -144,7 +138,7 @@ ColumnLayout {
             clip: true
 
             property bool active: false
-            property string mode: "" // "alert" | "chat"
+            property string mode: ""
 
             function showAlert(kind, user) {
                 mode = "alert"
@@ -297,7 +291,6 @@ ColumnLayout {
                     obsCard.obsConnecting = true
                     obsCard.obsStatusText = ""
                     api.post("/api/obs/connect", {}, function (ok, data) {
-                        // has its own inline status text below, no toast
                         obsCard.obsConnecting = false
                         if (ok && data && data.ok) {
                             obsCard.obsConnected = true

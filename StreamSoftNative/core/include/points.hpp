@@ -1,11 +1,5 @@
 #pragma once
 
-// StreamSoft's own points economy — deliberately independent of Twitch
-// Channel Points (which would need broadcaster-side reward setup and an
-// extra EventSub/API scope). Viewers earn a point per chat message (rate
-// limited so spam doesn't farm), spend them on !song requests (song_queue.hpp).
-// Same JSON-file-backed, mutex-guarded shape as ChatCommand's CommandsStore.
-
 #include <crow/json.h>
 
 #include <algorithm>
@@ -51,10 +45,6 @@ public:
         f << j.dump();
     }
 
-    // No-op if this user earned a point within the last
-    // kAwardCooldownSeconds — otherwise every message in a fast-moving chat
-    // would mint points, defeating the whole point (pun intended) of it
-    // costing something to redeem later.
     void award_for_message(const std::string& username) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto now = std::chrono::steady_clock::now();
@@ -74,8 +64,6 @@ public:
         return it != balances_.end() ? it->second : 0;
     }
 
-    // False (no deduction) if the balance is short — callers check this
-    // before actually granting whatever the points were being spent on.
     bool spend(const std::string& username, int amount) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = balances_.find(username);
@@ -108,4 +96,4 @@ private:
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> last_award_;
 };
 
-} // namespace streamsoft
+}

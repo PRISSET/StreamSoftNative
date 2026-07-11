@@ -1,14 +1,5 @@
 #pragma once
 
-// Adds the /chat, /events, /poll and /nowplaying Browser Sources directly
-// into OBS's own scene collection JSON on disk — no obs-websocket, no
-// "enable WebSocket server"
-// checkbox nobody will find. Trade-off: OBS must be closed while this runs
-// (editing its config file out from under a running instance is how you
-// corrupt it), so this only works before OBS is launched, not as a live
-// "connect now" action. Every write is preceded by a timestamped backup of
-// the untouched file — this is someone's real config, treat it that way.
-
 #include <crow/logging.h>
 #include <nlohmann/json.hpp>
 
@@ -56,8 +47,6 @@ inline bool is_obs_running() {
     return found;
 }
 
-// Not cryptographically meaningful — just needs to look like a UUID and not
-// collide with existing ones in the file, same bar OBS itself uses these for.
 inline std::string generate_uuid() {
     static std::mt19937_64 gen(std::random_device{}());
     std::uniform_int_distribution<int> dist(0, 15);
@@ -80,11 +69,6 @@ inline std::string generate_uuid() {
     return s;
 }
 
-// Newest-modified .json in basic/scenes/ — OBS doesn't expose an obvious
-// "this is the active collection" key in global.ini across versions, but it
-// does rewrite the active file's mtime on every save/exit, so this is a
-// reliable-enough heuristic. With the common case of a single collection
-// (most users never create a second one) it's unambiguous anyway.
 inline fs::path find_active_scene_collection() {
     fs::path scenes_dir = obs_config_dir() / "basic" / "scenes";
     if (!fs::exists(scenes_dir)) return {};
@@ -102,11 +86,6 @@ inline fs::path find_active_scene_collection() {
     return best;
 }
 
-// nlohmann::json's own .value(key, default) only substitutes the default
-// for a *missing* key — if the key exists but holds null (which at least
-// one entry in real-world OBS scene files does, empirically), it throws
-// type_error.306 instead. This tolerates both missing *and* wrong-typed
-// values, which is what "safe to look at untrusted-ish structure" needs.
 inline std::string get_str(const json& j, const char* key, const std::string& def = "") {
     if (!j.is_object()) return def;
     auto it = j.find(key);
@@ -188,19 +167,6 @@ inline json make_scene_item(const std::string& name, const std::string& source_u
     return item;
 }
 
-// Adds `name` (pointing `url`) to the current scene if it isn't already
-// present (by name) — safe to call repeatedly, won't duplicate.
-//
-// Takes the scene's *index* into root["sources"], not a reference/pointer to
-// it: root["sources"].push_back() below can reallocate that array's backing
-// storage, which would silently invalidate any reference obtained before
-// the call (classic iterator/reference invalidation) — a previous version
-// of this function took `json& scene_source` and wrote through it after the
-// push_back, which meant the item never actually landed in `root` at all
-// (the write went into now-detached memory) even though re-reading through
-// that same dangling reference *looked* like it had worked. Re-indexing
-// fresh via root["sources"][scene_index] after every mutation sidesteps the
-// whole issue.
 inline void ensure_one_source(json& root, size_t scene_index, const std::string& name, const std::string& url,
                                int width, int height) {
     for (const auto& src : root["sources"]) {
@@ -282,13 +248,6 @@ inline SceneFileResult ensure_browser_sources_via_file(int overlay_port) {
 
     std::string base = "http://127.0.0.1:" + std::to_string(overlay_port);
 
-    // Native sizes for all four, not the stream canvas — see the comment on
-    // obs_client.hpp's ensure_browser_sources() for why: sizing a widget to
-    // the full canvas left its actual content a tiny, often-blurry postage
-    // stamp with no natural way to resize/reposition it in OBS. Each page
-    // CSS-positions its own content with `position: fixed` (see style.css),
-    // which works at any viewport size, so these just need to be "big
-    // enough" for that content's worst case.
     ensure_one_source(root, scene_index, "StreamSoft Chat", base + "/chat", 940, 960);
     ensure_one_source(root, scene_index, "StreamSoft Alerts", base + "/events", 820, 900);
     ensure_one_source(root, scene_index, "StreamSoft Poll", base + "/poll", 640, 680);
@@ -308,4 +267,4 @@ inline SceneFileResult ensure_browser_sources_via_file(int overlay_port) {
     return result;
 }
 
-} // namespace streamsoft::obs
+}

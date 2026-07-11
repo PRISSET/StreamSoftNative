@@ -1,7 +1,5 @@
 #pragma once
 
-// Mirrors softforstream/moderation.py.
-
 #include <algorithm>
 #include <cctype>
 #include <mutex>
@@ -30,12 +28,11 @@ public:
 
     std::vector<std::string> list_muted() {
         std::lock_guard<std::mutex> lock(mutex_);
-        return std::vector<std::string>(muted_.begin(), muted_.end()); // std::set is already sorted
+        return std::vector<std::string>(muted_.begin(), muted_.end());
     }
 
 private:
     static std::string normalize(std::string username) {
-        // trim
         auto not_space = [](unsigned char c) { return !std::isspace(c); };
         username.erase(username.begin(), std::find_if(username.begin(), username.end(), not_space));
         username.erase(std::find_if(username.rbegin(), username.rend(), not_space).base(), username.end());
@@ -50,4 +47,4 @@ private:
     std::set<std::string> muted_;
 };
 
-} // namespace streamsoft
+}

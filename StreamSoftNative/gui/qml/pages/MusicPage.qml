@@ -2,11 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
-// Own points economy, not Twitch Channel Points (see core/include/points.hpp)
-// — viewers earn a point per chat message, spend them on "!song <ссылка>"
-// (YouTube/SoundCloud). Actual playback happens in the /nowplaying browser
-// source, this page just controls the settings/queue and shows who's
-// leading the points board.
 ColumnLayout {
     id: root
     spacing: 18

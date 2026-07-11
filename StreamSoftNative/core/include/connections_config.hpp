@@ -1,15 +1,5 @@
 #pragma once
 
-// GUI-editable connection settings (API keys/tokens + per-feature on/off
-// toggles), persisted to connections.json — this is what closes the gap the
-// old .env-only config had: a regular user has no idea what a .env file is
-// or where TWITCH_CLIENT_ID comes from. The GUI's Connections page reads
-// and writes this through /api/connections.
-//
-// Changes here take effect on next launch, not live — tearing down and
-// rebuilding IRC/WebSocket connections on the fly is a much bigger and
-// riskier change than a "restart to apply" note in the UI costs.
-
 #include "env_config.hpp"
 
 #include <crow/json.h>
@@ -38,10 +28,6 @@ struct ConnectionsConfig {
     bool tts_enabled = true;
     int tts_max_chars = 200;
 
-    // Set once /api/obs/connect succeeds — lets the GUI stop re-offering
-    // the same "Подключить к OBS" action every time the page loads, since
-    // ensure_browser_sources_via_file() is itself idempotent but the GUI
-    // otherwise has no memory of a prior successful run.
     bool obs_connected = false;
 
     static constexpr const char* kFile = "connections.json";
@@ -91,9 +77,6 @@ struct ConnectionsConfig {
             }
         }
 
-        // First run: migrate whatever's in .env so an existing dev setup
-        // (or anyone who filled in .env.example by hand) isn't dropped on
-        // the floor the moment this file replaces it as the source of truth.
         ConnectionsConfig c;
         Config env = load_config();
         c.twitch_client_id = env.twitch_client_id;
@@ -135,4 +118,4 @@ struct ConnectionsConfig {
     }
 };
 
-} // namespace streamsoft
+}

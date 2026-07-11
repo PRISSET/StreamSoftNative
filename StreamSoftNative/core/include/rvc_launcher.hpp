@@ -1,11 +1,5 @@
 #pragma once
 
-// Spawns/stops the RVC adapter (adapters/rvc, the live-pip-installed
-// venv+torch+rvc-python HTTP microservice) — mirrors tts_launcher.hpp's role
-// for TTS. Same Job-Object-tied-lifetime approach: if streamsoft_core exits
-// for any reason, Windows tears down the adapter with it, so it never
-// lingers as an orphaned uvicorn process on that port.
-
 #include "app_paths.hpp"
 
 #include <crow/logging.h>
@@ -85,4 +79,4 @@ inline void stop(AdapterProcess& proc) {
     proc.running = false;
 }
 
-} // namespace streamsoft::rvc
+}

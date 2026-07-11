@@ -1,9 +1,5 @@
 #pragma once
 
-// Twitch device-code OAuth flow + token cache, mirroring
-// softforstream/twitch_auth.py (Python reference) — same endpoints, same
-// cache file format (twitch_token.json), same scopes.
-
 #include "app_paths.hpp"
 
 #include <crow/json.h>
@@ -28,25 +24,12 @@ inline const std::string kAuthHost = "https://id.twitch.tv";
 inline const std::string kApiHost = "https://api.twitch.tv";
 inline const std::string kScopes = "chat:read chat:edit moderator:read:followers channel:read:subscriptions bits:read";
 
-// device_code_flow() runs on the Twitch worker thread and, until now, only
-// surfaced the one-time verification_uri/user_code via CROW_LOG_INFO — a
-// GUI build (see gui/main.cpp's WIN32 subsystem) has no console, so that
-// log line was completely invisible and nobody could actually finish
-// connecting Twitch. This mutex-guarded snapshot is polled by
-// GET /api/twitch/auth-status (see overlay_server.hpp) so the GUI can show
-// a real banner instead.
 struct AuthPromptState {
     std::mutex mutex;
     bool pending = false;
     std::string verification_uri;
     std::string user_code;
 
-    // Outcome of the most recent manual auth attempt (see
-    // run_manual_auth() / POST /api/twitch/start-auth) — "" while nothing's
-    // run yet or a new attempt just started, "success"/"error" once it
-    // finishes. Without this, the GUI could only see `pending` flip back to
-    // false and had no way to tell "it worked" from "it failed" — the
-    // banner just vanished either way.
     std::string last_result;
     std::string last_username;
     std::string last_error;
@@ -57,10 +40,6 @@ inline AuthPromptState& auth_prompt_state() {
     return state;
 }
 
-// RAII: sets the prompt on construction, clears it on destruction —
-// device_code_flow() has multiple exit paths (success return, two throws),
-// this guarantees the prompt never gets stuck showing a stale/expired code
-// no matter which one fires.
 class ScopedAuthPrompt {
 public:
     ScopedAuthPrompt(std::string verification_uri, std::string user_code) {
@@ -82,27 +61,12 @@ public:
 };
 inline const std::string kTokenFile = "twitch_token.json";
 
-// Thrown specifically for a 401 from Twitch's own API (as opposed to a
-// network hiccup/timeout) — get_access_token()'s cached-token fast path
-// only looks at the locally-stored expires_in, so a token Twitch has
-// actually revoked/invalidated server-side (password change, the user
-// revoking the app's access in their Twitch settings, etc.) still looks
-// "not expired yet" locally and keeps getting handed out as-is forever.
-// Without this, watch_twitch()/watch_twitch_events() just log "retry in
-// 15/20s" and call get_access_token() again, which returns the exact same
-// dead token — infinite loop, chat/EventSub silently dead with no re-auth
-// prompt ever surfacing. Callers that catch this specifically call
-// invalidate_cached_token() below before retrying, which forces the next
-// get_access_token() past the fast path into refresh/device-code flow.
 struct AuthRejected : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
 inline void invalidate_cached_token() { std::remove(kTokenFile.c_str()); }
 
-// Every outbound HTTPS client in this project must verify certificates
-// against the bundled CA store — cpp-httplib does NOT verify by default,
-// which would silently downgrade every OAuth/API call to MITM-able.
 inline httplib::Client make_https_client(const std::string& host) {
     httplib::Client cli(host);
     cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
@@ -116,7 +80,7 @@ struct Token {
     std::string refresh_token;
     std::vector<std::string> scope;
     long long expires_in = 0;
-    long long obtained_at = 0; // unix seconds, set on save()
+    long long obtained_at = 0;
 
     bool valid() const { return !access_token.empty(); }
 };
@@ -127,8 +91,6 @@ inline long long now_seconds() {
         .count();
 }
 
-// Minimal percent-encoding for query params — avoids relying on cpp-httplib's
-// internal detail:: namespace, which isn't part of its stable public API.
 inline std::string url_encode(const std::string& value) {
     std::ostringstream out;
     out << std::hex << std::uppercase;
@@ -202,10 +164,6 @@ inline bool has_required_scopes(const Token& t) {
     return true;
 }
 
-// Blocking: polls until the user completes the browser auth step, or throws
-// std::runtime_error on timeout/rejection. Publishes the verification URL +
-// code via ScopedAuthPrompt (for the GUI banner) and CROW_LOG_INFO (console
-// builds) for the whole duration of the wait.
 inline Token device_code_flow(const std::string& client_id) {
     auto auth = make_https_client(kAuthHost);
 
@@ -329,12 +287,6 @@ inline std::string get_user_id(const std::string& client_id, const std::string& 
     return std::string(data["data"][0]["id"].s());
 }
 
-// Kicked off from POST /api/twitch/start-auth (see overlay_server.hpp) the
-// moment the GUI saves a new Client ID — without this, the device-code
-// prompt only ever appeared once the Twitch chat/EventSub worker threads
-// happened to start, which only happens at the next full app launch.
-// Records success/failure into auth_prompt_state() so the polling GUI can
-// show a real outcome instead of the banner just disappearing either way.
 inline void run_manual_auth(const std::string& client_id) {
     auto& s = auth_prompt_state();
     try {
@@ -351,4 +303,4 @@ inline void run_manual_auth(const std::string& client_id) {
     }
 }
 
-} // namespace streamsoft::twitch
+}

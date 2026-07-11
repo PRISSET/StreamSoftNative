@@ -20,10 +20,6 @@ target_link_libraries(streamsoft_core PRIVATE
     dxgi
 )
 
-# Dev-time only: points straight at the source tree's web/ folder (and the
-# TTS/RVC adapter folders) so we can iterate without a copy/install step. The
-# packaged installer will ship these next to the exe and these defines go
-# away in favor of a relative lookup.
 target_compile_definitions(streamsoft_core PRIVATE
     STREAMSOFT_WEB_DIR="${CMAKE_CURRENT_SOURCE_DIR}/web"
     STREAMSOFT_CACERT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/certs/cacert.pem"

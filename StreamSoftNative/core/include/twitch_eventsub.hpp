@@ -1,8 +1,5 @@
 #pragma once
 
-// Twitch EventSub over WebSocket, mirroring softforstream/twitch_eventsub.py.
-// Uses ixwebsocket for the client (Crow only provides a WS *server*).
-
 #include <crow/json.h>
 #include <crow/logging.h>
 #include <httplib.h>
@@ -136,9 +133,6 @@ inline void run_once(const std::string& channel, const std::string& client_id, c
         ws.setUrl(ws_url);
 
         ws.setOnMessageCallback([&](const ix::WebSocketMessagePtr& msg) {
-            // Runs on ixwebsocket's own worker thread — an uncaught exception
-            // here would std::terminate() the whole process, not just this
-            // worker, so every path back out must be exception-safe.
             try {
                 if (msg->type == ix::WebSocketMessageType::Error) {
                     std::lock_guard<std::mutex> lock(mtx);
@@ -181,7 +175,6 @@ inline void run_once(const std::string& channel, const std::string& client_id, c
                 } else if (msg_type == "revocation") {
                     CROW_LOG_WARNING << "Twitch отозвал подписку EventSub";
                 }
-                // session_keepalive: ничего не делаем.
             } catch (const std::exception& e) {
                 CROW_LOG_ERROR << "Не удалось обработать сообщение EventSub: " << e.what();
             }
@@ -204,17 +197,11 @@ inline void run_once(const std::string& channel, const std::string& client_id, c
     }
 }
 
-// Blocking; call from its own thread. Retries forever with a 20s backoff,
-// same as the Python reference.
 inline void watch_twitch_events(const std::string& channel, const std::string& client_id, const EventCallback& on_event) {
     while (true) {
         try {
             run_once(channel, client_id, on_event);
         } catch (const AuthRejected& e) {
-            // See the matching catch in twitch_chat.hpp's watch_twitch() —
-            // same fix, same reason: a token Twitch rejected server-side
-            // still looks locally unexpired, so the cache has to be wiped
-            // here or get_access_token() just keeps handing it back out.
             CROW_LOG_ERROR << "Twitch отклонил токен (EventSub), сбрасываю кэш и повторю авторизацию через 20 секунд: "
                             << e.what();
             invalidate_cached_token();
@@ -226,4 +213,4 @@ inline void watch_twitch_events(const std::string& channel, const std::string& c
     }
 }
 
-} // namespace streamsoft::twitch
+}

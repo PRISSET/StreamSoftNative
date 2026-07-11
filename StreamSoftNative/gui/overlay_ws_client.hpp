@@ -1,12 +1,5 @@
 #pragma once
 
-// Bridges the overlay's own /ws feed (the same one OBS Browser Source
-// connects to) into QML, so alerts/chat can be previewed natively in the
-// app instead of requiring an external browser tab. Qt has no bundled
-// WebSocket *client* module in this build (QtWebSockets isn't installed),
-// but ixwebsocket already is — it's core's own WS client dependency, reused
-// here instead of pulling in another library for the same job.
-
 #include <QObject>
 #include <QString>
 

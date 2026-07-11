@@ -2,9 +2,6 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Network ShaderTools LabsPlatform)
 
-# Same third-party deps as core/ — the GUI now embeds core's whole
-# background-service bundle (see core_app.hpp) and runs it on its own
-# thread, so this is one exe instead of two separate processes.
 find_package(Crow CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -23,10 +20,6 @@ qt_add_executable(streamsoft_gui WIN32
     $<$<BOOL:${WIN32}>:app_icon.rc>
 )
 
-# `pragma Singleton` inside Theme.qml only states intent — the build's qmldir
-# generation needs this property too, or it silently registers Theme as a
-# plain (non-singleton) type and every `Theme.xxx` property access in QML
-# resolves to undefined with no runtime error at all.
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE true)
 
 qt_add_qml_module(streamsoft_gui
@@ -102,19 +95,10 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_CACERT_PATH="${CMAKE_SOURCE_DIR}/core/certs/cacert.pem"
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
-    # Kept in sync by hand with installer/streamsoft.iss's MyAppVersion —
-    # auto_update.hpp compares this against GitHub Releases' latest tag.
     STREAMSOFT_VERSION="1.0.0"
-    # Qt's signals/slots/emit macros collide with unrelated identifiers in
-    # third-party headers now linked into this target — Crow has a method
-    # literally named signals(), which Qt's macro mangles into `public()`
-    # and breaks the parse. Neither api_client nor main.cpp use the bare
-    # Qt keyword form (they'd need Q_SIGNALS/Q_SLOTS/Q_EMIT if they did).
     QT_NO_KEYWORDS
 )
 
-# Ship Qt's own DLLs next to the exe (windeployqt), same idea as vcpkg's
-# applocal deployment for the core's OpenSSL/brotli DLLs.
 if(WIN32)
     get_target_property(_qmake_exe Qt6::qmake IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qmake_exe}" DIRECTORY)

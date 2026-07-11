@@ -9,10 +9,6 @@
 
 namespace streamsoft {
 
-// Loads KEY=VALUE pairs from a .env file into the process environment,
-// without overriding variables already set (same semantics as python-dotenv,
-// which softforstream/config.py relies on) — env vars set by the shell/OS
-// always win over the file.
 inline void load_dotenv(const std::string& path = ".env") {
     std::ifstream f(path);
     if (!f) return;
@@ -52,7 +48,6 @@ inline std::string env(const std::string& name, const std::string& default_value
     const char* v = std::getenv(name.c_str());
     if (!v) return default_value;
     std::string s(v);
-    // trim
     const char* ws = " \t\r\n";
     s.erase(0, s.find_first_not_of(ws));
     auto last = s.find_last_not_of(ws);
@@ -67,8 +62,6 @@ inline bool env_bool(const std::string& name, bool default_value) {
     return v == "true" || v == "1" || v == "yes" || v == "on";
 }
 
-// Accepts either a bare 11-char YouTube video ID or a full URL
-// (watch?v=, youtu.be/, /live/) — mirrors config.py's _extract_youtube_id.
 inline std::string extract_youtube_id(const std::string& value) {
     if (value.empty()) return value;
     static const std::regex re(R"((?:v=|youtu\.be/|/live/)([A-Za-z0-9_-]{11}))");
@@ -121,4 +114,4 @@ inline Config load_config() {
     return cfg;
 }
 
-} // namespace streamsoft
+}

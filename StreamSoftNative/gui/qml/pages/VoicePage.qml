@@ -2,13 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
-// TTS and RVC used to live on two separate nav pages even though RVC is
-// nothing but a voice filter *on top of* TTS output (see tts_worker.hpp's
-// speak() — it synthesizes via the TTS adapter, then optionally pipes that
-// through RVC before playback) — same reasoning for why the alert-reading
-// volume slider stays here instead of on AlertsPage: that page is about
-// per-event gif/mp3 media triggers, this page is about how the voice itself
-// sounds, alerts included.
 ColumnLayout {
     id: root
     spacing: 18
@@ -32,8 +25,6 @@ ColumnLayout {
         rvcIndexRateSlider.value = (settings.rvc_index_rate !== undefined ? settings.rvc_index_rate : 0.3) * 100
         rvcProtectSlider.value = (settings.rvc_protect !== undefined ? settings.rvc_protect : 0.5) * 100
 
-        duckingToggle.checked = !!settings.ducking_enabled
-        duckingSlider.value = settings.ducking_percent !== undefined ? settings.ducking_percent : 30
         loading = false
     }
 
@@ -58,14 +49,6 @@ ColumnLayout {
             rvc_pitch: Math.round(rvcPitchSlider.value),
             rvc_index_rate: rvcIndexRateSlider.value / 100.0,
             rvc_protect: rvcProtectSlider.value / 100.0
-        }, function () {})
-    }
-
-    function saveDucking() {
-        if (loading) return
-        api.post("/api/settings", {
-            ducking_enabled: duckingToggle.checked,
-            ducking_percent: Math.round(duckingSlider.value)
         }, function () {})
     }
 
@@ -175,33 +158,6 @@ ColumnLayout {
             Layout.fillWidth: true
             from: 0; to: 100; stepSize: 5
             onMoved: root.saveTts()
-        }
-    }
-
-    GlassCard {
-        Layout.fillWidth: true
-
-        GlassToggle {
-            id: duckingToggle
-            text: "Приглушать другие приложения во время озвучки"
-            onToggled: root.saveDucking()
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Text {
-                text: "Громкость остальных приложений"
-                color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true
-            }
-            Text { text: Math.round(duckingSlider.value) + "%"; color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
-        }
-        GlassSlider {
-            id: duckingSlider
-            Layout.fillWidth: true
-            enabled: duckingToggle.checked
-            opacity: enabled ? 1.0 : 0.5
-            from: 0; to: 100; stepSize: 5
-            onMoved: root.saveDucking()
         }
     }
 

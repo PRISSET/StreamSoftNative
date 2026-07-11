@@ -1,7 +1,5 @@
 #pragma once
 
-// YouTube Live Chat polling, mirroring softforstream/youtube_chat.py.
-
 #include <crow/json.h>
 #include <crow/logging.h>
 #include <httplib.h>
@@ -13,7 +11,7 @@
 #include <string>
 #include <thread>
 
-#include "twitch_auth.hpp" // reuse url_encode
+#include "twitch_auth.hpp"
 
 namespace streamsoft::youtube {
 
@@ -82,7 +80,6 @@ inline void poll_messages(httplib::Client& api, const std::string& live_chat_id,
     }
 }
 
-// Blocking; call from its own thread. Retries forever with a 15s backoff.
 inline void watch_youtube(const std::string& video_id, const std::string& api_key, const ChatCallback& on_message) {
     auto api = streamsoft::twitch::make_https_client(kApiHost);
     api.set_read_timeout(20);
@@ -99,4 +96,4 @@ inline void watch_youtube(const std::string& video_id, const std::string& api_ke
     }
 }
 
-} // namespace streamsoft::youtube
+}

@@ -1,11 +1,5 @@
 #pragma once
 
-// Spawns/stops the TTS adapter (adapters/tts, a Python+edge-tts HTTP
-// microservice) — mirrors softforstream/rvc_launcher.py's role for RVC.
-// Native Win32 CreateProcess, no shelling out to cmd.exe / no Python
-// dependency in core itself (core just launches the interpreter as a
-// subprocess, same as the Python reference does for its RVC sidecar).
-
 #include "app_paths.hpp"
 
 #include <crow/logging.h>
@@ -48,8 +42,6 @@ inline AdapterProcess start(int port) {
     PROCESS_INFORMATION pi{};
 
     std::wstring cwd = adapter_dir().wstring();
-    // CreateProcessW may write into the command-line buffer — needs a
-    // mutable copy, a `const wchar_t*` literal isn't safe to pass here.
     std::vector<wchar_t> cmd_buf(cmd.begin(), cmd.end());
     cmd_buf.push_back(L'\0');
 
@@ -60,12 +52,6 @@ inline AdapterProcess start(int port) {
         return result;
     }
 
-    // Ties the adapter's lifetime to ours via a Job Object: if streamsoft_core
-    // exits for *any* reason — clean shutdown, crash, killed from Task
-    // Manager — Windows tears down every process in the job too. A plain
-    // TerminateProcess() in stop() only covers the clean-shutdown path;
-    // without this, a crash would leave uvicorn running forever in the
-    // background on that port.
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
     if (job) {
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
@@ -93,4 +79,4 @@ inline void stop(AdapterProcess& proc) {
     proc.running = false;
 }
 
-} // namespace streamsoft::tts
+}

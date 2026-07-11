@@ -103,9 +103,6 @@ ColumnLayout {
             placeholderText: "например, gp762nuuoqcoxypju8c569th9wz7q5"
             onEditingFinished: {
                 root.save()
-                // Otherwise the device-code banner only ever appears once
-                // the Twitch worker threads happen to start, which only
-                // happens at the next full app restart.
                 if (text.length > 0) {
                     api.post("/api/twitch/start-auth", { client_id: text }, function () {}, false)
                 }

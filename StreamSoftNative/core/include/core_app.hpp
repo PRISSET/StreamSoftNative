@@ -1,11 +1,5 @@
 #pragma once
 
-// The whole background-service bundle (chat workers, TTS, overlay HTTP/WS
-// server) as a single reusable entry point — run_core() is called from
-// core/src/main.cpp (standalone headless exe) *and* from gui/main.cpp (the
-// merged single-exe build) on its own thread, so both binaries share one
-// implementation instead of drifting apart.
-
 #include "app_paths.hpp"
 #include "auto_update.hpp"
 #include "connections_config.hpp"
@@ -33,10 +27,6 @@ namespace streamsoft {
 
 namespace detail {
 
-// Belt-and-suspenders around workers that already retry internally (see
-// twitch_chat.hpp / youtube_chat.hpp) — mirrors the _supervise() pattern in
-// softforstream/main.py so nothing escaping a worker's own loop can silently
-// kill that thread for good.
 inline void supervise(const std::string& name, const std::function<void()>& fn) {
     while (true) {
         try {
@@ -58,10 +48,8 @@ inline std::string event_speech(const std::string& kind, const std::string& user
     return user + ": событие " + kind;
 }
 
-} // namespace detail
+}
 
-// Blocking — call on its own thread if the caller also needs to run its own
-// event loop (e.g. Qt's) on the calling thread.
 inline void run_core() {
     using namespace detail;
 
@@ -79,7 +67,6 @@ inline void run_core() {
                         runtime.tts_say_author, config.tts_max_chars);
     tts.set_volume_percent(runtime.tts_volume);
     tts.set_enabled(config.tts_enabled);
-    tts.set_ducking(runtime.ducking_enabled, runtime.ducking_percent);
     auto tts_process = tts::start(kTtsPort);
     tts.start();
     overlay.set_tts_worker(&tts);
@@ -88,26 +75,12 @@ inline void run_core() {
     auto rvc_process = rvc::start(kRvcPort);
     if (rvc_process.running) overlay.set_rvc_port(kRvcPort);
 
-    // Seeds TtsWorker with whatever RVC settings were last saved — without
-    // this, toggling "Включить смену голоса" saved to runtime_settings.json
-    // just fine but speak() never actually knew about it (confirmed live:
-    // page showed the adapter healthy, toggle looked enabled, TTS kept
-    // playing the plain voice) since nothing ever told the worker.
     tts.set_rvc_settings(runtime.rvc_enabled, runtime.rvc_scope, runtime.rvc_pitch, runtime.rvc_index_rate,
                           runtime.rvc_protect, runtime.rvc_f0method);
     if (rvc_process.running) tts.set_rvc_port(kRvcPort);
 
-    // Guards tts_process/rvc_process against the race between a background
-    // Check&Install thread's "just finished" callback (below) writing a
-    // freshly-started AdapterProcess into these and this thread reading them
-    // again at shutdown (tts::stop()/rvc::stop() at the very end of this
-    // function).
     std::mutex adapter_mutex;
 
-    // Lets a module installed *after* this app already started actually
-    // come alive right away — without this hook, the adapter subprocess
-    // above never got spawned (is_installed() was false at that point), and
-    // nothing else would ever retry it short of a full app restart.
     set_module_installed_callback("tts", [&tts_process, &adapter_mutex, kTtsPort] {
         std::lock_guard<std::mutex> lock(adapter_mutex);
         if (tts_process.running) return;
@@ -166,11 +139,6 @@ inline void run_core() {
             });
         });
 
-        // Periodic, low-frequency nudge about the points economy and !song —
-        // otherwise a viewer has no way to learn about either short of
-        // reading !help themselves. Long interval and gated on the feature
-        // actually being on (see song_reminder_text()) so it never reads as
-        // spam the way a per-message or per-minute reminder would.
         workers.emplace_back([&overlay, &twitch_outgoing] {
             supervise("chat-reminders", [&overlay, &twitch_outgoing] {
                 while (true) {
@@ -212,10 +180,6 @@ inline void run_core() {
                     [&overlay, &tts, &config](const std::string& author, const std::string& text) {
                         if (overlay.is_muted(author)) return;
                         if (overlay.try_poll_vote(author, text)) return;
-                        // No outgoing-reply channel for YouTube (read-only
-                        // worker, same as chat commands) — still recognized
-                        // and consumed (points spent, command matched), the
-                        // reply text just has nowhere to go.
                         if (overlay.try_builtin_command(author, text)) return;
                         if (overlay.try_song_request(author, text)) return;
 
@@ -244,8 +208,6 @@ inline void run_core() {
         });
     }
 
-    // Always on — not a per-user setting, see discord_presence.hpp's
-    // kClientId/kRepoUrl.
     {
         std::string state_line;
         if (config.should_run_twitch_chat()) state_line = "Twitch: " + config.twitch_channel;
@@ -258,16 +220,15 @@ inline void run_core() {
         }).detach();
     }
 
-    // Always on, same as Discord presence above — not a per-user setting.
     std::thread([] { supervise("auto-update", [] { run_auto_updater(); }); }).detach();
 
     for (auto& t : workers) t.detach();
 
-    overlay.run(); // blocking
+    overlay.run();
 
     std::lock_guard<std::mutex> lock(adapter_mutex);
     tts::stop(tts_process);
     rvc::stop(rvc_process);
 }
 
-} // namespace streamsoft
+}

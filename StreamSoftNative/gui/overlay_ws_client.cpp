@@ -12,10 +12,6 @@ void OverlayWsClient::start() {
     ws_.setUrl("ws://127.0.0.1:8099/ws");
 
     ws_.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg) {
-        // Runs on ixwebsocket's own thread — QMetaObject::invokeMethod with
-        // QueuedConnection (the default when emitting to a receiver that
-        // lives on a different thread, which this QObject does: it's
-        // created on the Qt/GUI thread) marshals the Q_EMIT back safely.
         if (msg->type == ix::WebSocketMessageType::Open) {
             QMetaObject::invokeMethod(this, [this] { Q_EMIT connectionStateChanged(true); }, Qt::QueuedConnection);
             return;

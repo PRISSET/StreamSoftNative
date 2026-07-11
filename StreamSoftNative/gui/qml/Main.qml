@@ -16,16 +16,6 @@ ApplicationWindow {
     title: "StreamSoft — настройки"
     color: Theme.bg
 
-    // Closing the window just hides it — the background service (chat
-    // workers, overlay server, TTS) keeps running on its own thread
-    // regardless of whether this settings window is open, so there's
-    // nothing to actually shut down here. Real exit is only via the tray
-    // menu's "Выход".
-    //
-    // `quitting` guards this: QCoreApplication::quit() tries to close all
-    // top-level windows as part of shutdown, and if this handler always
-    // vetoes that, quit() never actually returns from app.exec() — verified
-    // via a standalone repro. The tray's "Выход" sets this before quitting.
     property bool quitting: false
     onClosing: (close) => {
         if (quitting) {
@@ -70,10 +60,6 @@ ApplicationWindow {
 
     property bool blurBackgroundEnabled: true
     property real blurAmount: 50
-    // Read by every GlassSurface (cards, sidebar, fields, nav, sliders...)
-    // as their default blur tap radius — one slider drives the whole app.
-    // 6px is the widest tap spacing that still reads as "glass" rather
-    // than "mush" at typical card sizes; 0 fully disables the blur taps.
     readonly property real blurRadius: blurBackgroundEnabled ? (blurAmount / 100.0) * 6.0 : 0.0
 
     Settings {
@@ -118,11 +104,6 @@ ApplicationWindow {
         notifySaved()
     }
 
-    // One toast for every kind of change in the app: api.mutationSucceeded
-    // covers every page's own save()/upload/delete (see api_client.cpp —
-    // fires on POST/DELETE, never on GET, so loading a page never pops
-    // this), local-only settings (background/blur/themes) call it directly
-    // since those never touch the REST API at all.
     function notifySaved(message) {
         toast.show(message || "Сохранено")
     }
@@ -141,14 +122,6 @@ ApplicationWindow {
             color: "#000000"
         }
 
-        // Blurred once here, at the wallpaper layer — not per-card. Every
-        // GlassSurface still applies its own live refraction on top of
-        // this, but the raw picture visible in the gaps between panels
-        // (sidebar edges, page margins) now reads as soft "blurred
-        // wallpaper" instead of a pin-sharp image poking through around
-        // otherwise-blurred glass. Foreground UI (cards, buttons, text)
-        // lives in a separate sibling below and is never part of this
-        // layer, so it's never touched by this blur.
         Item {
             id: wallpaper
             anchors.fill: parent
@@ -161,9 +134,6 @@ ApplicationWindow {
                 autoPaddingEnabled: false
             }
 
-            // Fixed, hand-placed layout (fractional so it scales with the
-            // window) rather than Math.random() — keeps the composition
-            // deliberate instead of risking an awkward cluster on resize.
             Item {
                 anchors.fill: parent
                 visible: window.backgroundStyle === "stars"
@@ -288,11 +258,6 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
-            // StackLayout.implicitHeight is the max across ALL of its
-            // children, not just the current one — binding contentHeight
-            // to it left a huge scrollable void below short pages sized
-            // for whichever page is tallest. Read the current page's own
-            // implicitHeight directly instead.
             contentHeight: pageStack.y + currentPageHeight + 40
             clip: true
 
@@ -371,21 +336,11 @@ ApplicationWindow {
         }
     }
 
-    // Twitch's device-code flow needs the user to open a page and type in
-    // a one-time code — the worker thread that runs it has nowhere to put
-    // that up (see ScopedAuthPrompt in twitch_auth.hpp), so it publishes
-    // it over REST and this polls + displays it. Global (not scoped to
-    // ConnectionsPage) since the flow can kick off at startup from
-    // previously-saved credentials, before the user ever opens that page.
     property bool twitchAuthPending: false
     property string twitchAuthUrl: ""
     property string twitchAuthCode: ""
     property string twitchAuthDismissedCode: ""
 
-    // Outcome of the most recent attempt (see run_manual_auth() in
-    // twitch_auth.hpp) — without this, the banner above just vanished the
-    // moment `pending` went back to false, with no way to tell "connected"
-    // from "failed, try again".
     property string twitchAuthResult: ""
     property string twitchAuthResultUsername: ""
     property string twitchAuthResultError: ""
@@ -412,8 +367,6 @@ ApplicationWindow {
         }
     }
 
-    // Success/failure toast fades on its own after a few seconds — dismissing
-    // it just records the key so it doesn't pop back on the next poll tick.
     Timer {
         id: resultAutoHide
         interval: 6000
@@ -539,19 +492,8 @@ ApplicationWindow {
 
     property Item backdropItem: backdrop
 
-    // Referenced (only for its change notifications) inside each
-    // GlassCard's sourceRect binding: mapToItem() alone registers no QML
-    // dependencies, so without this the backdrop crop behind a card would
-    // go stale the moment the page scrolls.
     property real backdropScrollY: scroll.contentItem ? scroll.contentItem.contentY : 0
 
-    // Same idea, but for the case scrolling doesn't cover: a card shifting
-    // position because a SIBLING elsewhere on the page changed size (e.g.
-    // an expandable "Как настроить?" guide opening pushes everything below
-    // it down). There's no single property to depend on for "some
-    // ancestor's layout changed" in general, so this just ticks on a timer
-    // and every GlassSurface re-samples its backdrop crop shortly after —
-    // cheap, and a ~130ms lag on a one-off expand/collapse is imperceptible.
     property real layoutTick
     NumberAnimation on layoutTick {
         from: 0; to: 1

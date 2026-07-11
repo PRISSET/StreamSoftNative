@@ -1,19 +1,8 @@
 #pragma once
 
-// Background auto-update: periodically checks GitHub Releases for a newer
-// tagged version than this build (STREAMSOFT_VERSION), and if found,
-// downloads the new installer and runs it silently. Inno Setup's own
-// Restart Manager integration (/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS) —
-// paired with main.cpp's WM_QUERYENDSESSION handling and
-// RegisterApplicationRestart(), see gui/main.cpp — closes this process and
-// reopens the new one on its own — there's no "reinstall wizard" the user
-// has to click through, same "just works in the background" feel as
-// Discord's own updater, without needing a custom differential-patch
-// system of our own.
-
 #include "app_paths.hpp"
-#include "module_installer.hpp"  // detail::download_file(), detail::run_subprocess_and_wait() reuse
-#include "twitch_auth.hpp"       // make_https_client() reuse pattern
+#include "module_installer.hpp"
+#include "twitch_auth.hpp"
 
 #include <crow/json.h>
 #include <crow/logging.h>
@@ -34,19 +23,9 @@
 namespace streamsoft {
 
 inline const std::string kUpdateApiHost = "https://api.github.com";
-// Deliberately the *list* endpoint, not GitHub's own "/releases/latest" —
-// this repo also hosts module packages (tts-v1, rvc-voice-v1, ...) as their
-// own releases, so "latest" by publish date is often one of those, not the
-// app installer, and has no StreamSoftSetup.exe asset at all. Walking the
-// list (GitHub returns it newest-first) and taking the first entry that
-// actually carries that asset is the only reliable way to find the latest
-// *app* release specifically.
 inline const std::string kUpdateApiPath = "/repos/PRISSET/StreamSoftNative/releases?per_page=20";
 inline constexpr const char* kUpdateAssetName = "StreamSoftSetup.exe";
 
-// "v0.1.2" / "0.1.2" -> {0, 1, 2}. Stops at the first non-numeric,
-// non-'.' character, so a tag like "0.2.0-beta" still compares sanely
-// against "0.1.5".
 inline std::vector<int> parse_version(const std::string& raw) {
     std::vector<int> parts;
     std::string s = raw;
@@ -90,7 +69,6 @@ inline UpdateCheckResult check_for_update() {
     cli.enable_server_certificate_verification(true);
     cli.set_connection_timeout(10);
 
-    // GitHub's REST API 403s any request with no User-Agent.
     httplib::Headers headers{{"User-Agent", "StreamSoft-Native"}, {"Accept", "application/vnd.github+json"}};
     auto resp = cli.Get(kUpdateApiPath, headers);
     if (!resp || resp->status != 200) return result;
@@ -98,11 +76,6 @@ inline UpdateCheckResult check_for_update() {
     auto releases = crow::json::load(resp->body);
     if (!releases) return result;
 
-    // GitHub's list order here doesn't reliably track publish recency once
-    // a release has been edited (un-drafted, re-uploaded, etc.) — comparing
-    // every candidate's parsed version instead of trusting list order is
-    // what actually finds the highest app version among the releases that
-    // carry an installer asset.
     std::vector<int> best_version;
     for (const auto& release : releases) {
         if (!release.has("tag_name") || !release.has("assets")) continue;
@@ -133,19 +106,12 @@ inline UpdateCheckResult check_for_update() {
 }
 
 struct ReleaseInfo {
-    std::string version;       // tag_name, e.g. "v1.0.0"
-    std::string name;          // release title
-    std::string notes;         // release body, as typed in `gh release create --notes`
-    std::string published_at;  // ISO 8601, e.g. "2026-07-09T20:01:05Z"
+    std::string version;
+    std::string name;
+    std::string notes;
+    std::string published_at;
 };
 
-// Powers the GUI's "Обновления" page (UpdatesPage.qml via GET /api/updates)
-// — same list-and-filter logic as check_for_update() (only releases that
-// actually carry the app installer, so the tts-v1/rvc-voice-v1 module
-// packages never show up here either), just returning every match instead
-// of only the single newest one, sorted newest-first by parsed version
-// rather than trusting GitHub's own list order (see check_for_update()'s
-// comment on why that order isn't reliable).
 inline std::vector<ReleaseInfo> fetch_release_history() {
     std::vector<ReleaseInfo> result;
 
@@ -189,10 +155,6 @@ inline std::vector<ReleaseInfo> fetch_release_history() {
     return result;
 }
 
-// Fire-and-forget: launches the silent installer and returns immediately,
-// deliberately *not* waiting for it — Restart Manager closes this very
-// process as part of that install, so blocking here would just mean
-// waiting on a process that's trying to end us.
 inline void launch_silent_update(const std::filesystem::path& installer_path) {
     std::wstring cmd = L"\"" + installer_path.wstring() +
                         L"\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS";
@@ -213,10 +175,6 @@ inline void launch_silent_update(const std::filesystem::path& installer_path) {
     }
 }
 
-// Runs forever on its own thread (see core_app.hpp) — checks shortly after
-// startup, then every few hours. A silent, low-priority background loop:
-// missing one check because GitHub was briefly unreachable just means
-// trying again next cycle, nothing time-sensitive about it.
 inline void run_auto_updater() {
     using namespace std::chrono_literals;
     std::this_thread::sleep_for(60s);
@@ -236,7 +194,7 @@ inline void run_auto_updater() {
                 update.installer_url, installer_path, [](std::uint64_t, std::uint64_t) {}, error);
             if (ok) {
                 launch_silent_update(installer_path);
-                return;  // update is on its way in — this process is about to be closed by it
+                return;
             }
             CROW_LOG_ERROR << "Не удалось скачать обновление: " << error;
         }
@@ -245,4 +203,4 @@ inline void run_auto_updater() {
     }
 }
 
-}  // namespace streamsoft
+}

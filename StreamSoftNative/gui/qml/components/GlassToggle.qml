@@ -14,13 +14,6 @@ Switch {
         width: 46
         height: 26
 
-        // iOS-style: the track itself stays glass/translucent in both
-        // states (a solid opaque fill reads as a generic Android/Material
-        // switch, not Apple's) — only its tint shifts toward Theme.good
-        // when on, same frosted language as every other control instead of
-        // a flat color block. The knob is always white, like real iOS —
-        // it used to flip to near-black when checked, which is the
-        // opposite of what Apple's switches actually do.
         GlassSurface {
             id: track
             anchors.fill: parent

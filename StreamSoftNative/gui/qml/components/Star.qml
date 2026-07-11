@@ -1,11 +1,6 @@
 import QtQuick
 import QtQuick.Effects
 
-// A single 4-point sparkle, drawn as an 8-vertex kite polygon (matches the
-// shape of the old static background.jpg exactly — tips on the axes, a
-// tight concave waist between them) instead of a raster image, so it can
-// glow and drift. Self-contained: instantiate several with different size/
-// position/duration and each one animates independently.
 Item {
     id: root
 
@@ -49,11 +44,6 @@ Item {
         Component.onCompleted: requestPaint()
     }
 
-    // Wide, soft halo behind the crisp shape — a single MultiEffect shadow
-    // pass reads as a subtle drop-shadow at low blur, but pushed toward its
-    // max it reads as neon bloom instead. autoPaddingEnabled (default on)
-    // lets the blur bleed outside the item's own bounds without needing to
-    // oversize the effect item or stretch the source shape.
     MultiEffect {
         anchors.fill: canvas
         source: canvas
@@ -68,10 +58,6 @@ Item {
 
     opacity: root.minOpacity
 
-    // Drives a plain offset property (fixed numeric targets) rather than
-    // animating `y` directly with a `to:` bound back to `y` itself — that
-    // would re-evaluate against the animation's own live output every
-    // frame and thrash instead of settling into a clean loop.
     property real driftOffset: 0
     transform: Translate { y: root.driftOffset }
 

@@ -1,13 +1,5 @@
 #pragma once
 
-// Song requests: !song <youtube-or-soundcloud-link> in chat, paid for with
-// StreamSoft's own points (points.hpp). Core only tracks *what* should be
-// playing — actual playback happens client-side in the overlay browser
-// source (core/web/nowplaying.html) via YouTube's/SoundCloud's own official
-// embed players, which is also what tells core a song ended (see
-// overlay_server.hpp's /ws onmessage handling for "song_ended") so the next
-// queued request can start.
-
 #include <crow/json.h>
 
 #include <deque>
@@ -20,8 +12,8 @@
 namespace streamsoft {
 
 struct SongRequest {
-    std::string platform; // "youtube" | "soundcloud"
-    std::string ref;      // youtube video id, or the full soundcloud track URL
+    std::string platform;
+    std::string ref;
     std::string requester;
 };
 
@@ -31,10 +23,6 @@ struct ParsedSongLink {
     std::string ref;
 };
 
-// Deliberately narrow: only recognizes the two link shapes viewers
-// actually paste (a youtube.com/watch or youtu.be short link, or any
-// soundcloud.com track URL) — not trying to be a general-purpose URL
-// parser, just enough to tell the overlay's embed player what to load.
 inline ParsedSongLink parse_song_link(const std::string& text) {
     static const std::regex yt_re(R"((?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{6,}))");
     static const std::regex sc_re(R"((https?://(?:www\.)?soundcloud\.com/\S+))");
@@ -57,9 +45,6 @@ public:
         return current_.has_value();
     }
 
-    // Pulls the next request off the queue into "now playing" — called
-    // right after a successful enqueue if nothing was already playing, and
-    // again whenever the overlay reports the current one ended.
     std::optional<SongRequest> advance() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (queue_.empty()) {
@@ -105,4 +90,4 @@ private:
     std::optional<SongRequest> current_;
 };
 
-} // namespace streamsoft
+}

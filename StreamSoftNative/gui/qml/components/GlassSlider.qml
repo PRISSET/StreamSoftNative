@@ -20,9 +20,6 @@ Slider {
             specularStrength: 0.4
         }
 
-        // Apple's sliders fill with the system accent color, not plain
-        // white/text — same Theme.good tint GlassToggle now uses when on,
-        // so every control agrees on what "active" looks like.
         Rectangle {
             width: root.visualPosition * parent.width
             height: parent.height
@@ -31,9 +28,6 @@ Slider {
         }
     }
 
-    // A fixed-size box (the max halo extent) so the travel-range math below
-    // never depends on the hover/press state — only what's drawn *inside*
-    // the box animates, keeping the dot's actual position stable.
     handle: Item {
         readonly property int dotSize: 17
         readonly property int boxSize: 30
@@ -43,8 +37,6 @@ Slider {
         width: boxSize
         height: boxSize
 
-        // Soft focus halo — a ring, not a filled disc, so it frames the
-        // dot instead of covering it.
         Rectangle {
             anchors.centerIn: parent
             width: root.pressed ? parent.boxSize : (root.hovered ? parent.boxSize * 0.85 : parent.dotSize)
