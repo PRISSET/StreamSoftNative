@@ -44,6 +44,9 @@ CLAUDE.md
 qt/
 .aqt-venv/
 
+# core/tools/yt-dlp.exe тоже сюда попадает через *.exe выше — качается сам
+# при конфигурации CMake (см. core/CMakeLists.txt), не коммитим
+
 # Рантайм-данные (создаются программой при первом запуске)
 runtime_settings.json
 chat_commands.json

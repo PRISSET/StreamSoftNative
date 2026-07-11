@@ -1,10 +1,11 @@
 #define MyAppName "StreamSoft"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "PRISSETIK"
 #define MyAppExeName "streamsoft_gui.exe"
 #define SourceRoot "..\build\gui\Release"
 #define WebSourceDir "..\core\web"
 #define CertsSourceDir "..\core\certs"
+#define ToolsSourceDir "..\core\tools"
 #define AdaptersSourceDir "..\adapters"
 #define IconFile "..\gui\qml\assets\icons\app-icon.ico"
 
@@ -44,6 +45,7 @@ Source: "{#SourceRoot}\*"; DestDir: "{app}"; Excludes: "*.log,*.exp,*.lib,*.pdb,
 Source: "{#WebSourceDir}\*.html"; DestDir: "{app}\web"; Flags: ignoreversion
 Source: "{#WebSourceDir}\static\*"; DestDir: "{app}\web\static"; Flags: recursesubdirs ignoreversion
 Source: "{#CertsSourceDir}\cacert.pem"; DestDir: "{app}\certs"; Flags: ignoreversion
+Source: "{#ToolsSourceDir}\yt-dlp.exe"; DestDir: "{app}\tools"; Flags: ignoreversion
 Source: "{#AdaptersSourceDir}\tts\server.py"; DestDir: "{app}\adapters\tts"; Flags: ignoreversion
 Source: "{#AdaptersSourceDir}\tts\requirements.txt"; DestDir: "{app}\adapters\tts"; Flags: ignoreversion
 Source: "{#AdaptersSourceDir}\rvc\server.py"; DestDir: "{app}\adapters\rvc"; Flags: ignoreversion

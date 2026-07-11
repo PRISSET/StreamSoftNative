@@ -60,6 +60,7 @@ inline void run_core() {
 
     OverlayServer overlay(8099, resolve_resource_dir("web", STREAMSOFT_WEB_DIR));
     overlay.set_broadcaster_name(config.twitch_channel);
+    if (config.should_run_twitch_chat()) overlay.set_twitch_client_id(config.twitch_client_id);
 
     constexpr int kTtsPort = 8102;
     auto runtime = RuntimeSettings::load();

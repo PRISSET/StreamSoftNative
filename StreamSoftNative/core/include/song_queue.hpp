@@ -7,6 +7,7 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace streamsoft {
@@ -47,6 +48,8 @@ public:
 
     std::optional<SongRequest> advance() {
         std::lock_guard<std::mutex> lock(mutex_);
+        ++generation_;
+        fallback_tried_ = false;
         if (queue_.empty()) {
             current_.reset();
             return std::nullopt;
@@ -58,8 +61,25 @@ public:
 
     void clear() {
         std::lock_guard<std::mutex> lock(mutex_);
+        ++generation_;
+        fallback_tried_ = false;
         queue_.clear();
         current_.reset();
+    }
+
+    std::optional<std::pair<std::string, int>> begin_youtube_fallback() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!current_ || current_->platform != "youtube" || fallback_tried_) return std::nullopt;
+        fallback_tried_ = true;
+        return std::make_pair(current_->ref, generation_);
+    }
+
+    bool apply_direct_url(int generation, const std::string& direct_url) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (generation != generation_ || !current_) return false;
+        current_->platform = "direct";
+        current_->ref = direct_url;
+        return true;
     }
 
     crow::json::wvalue status() {
@@ -88,6 +108,8 @@ private:
     std::mutex mutex_;
     std::deque<SongRequest> queue_;
     std::optional<SongRequest> current_;
+    int generation_ = 0;
+    bool fallback_tried_ = false;
 };
 
 }

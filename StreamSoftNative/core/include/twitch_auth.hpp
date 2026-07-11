@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iomanip>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -22,7 +23,8 @@ namespace streamsoft::twitch {
 
 inline const std::string kAuthHost = "https://id.twitch.tv";
 inline const std::string kApiHost = "https://api.twitch.tv";
-inline const std::string kScopes = "chat:read chat:edit moderator:read:followers channel:read:subscriptions bits:read";
+inline const std::string kScopes =
+    "chat:read chat:edit moderator:read:followers channel:read:subscriptions bits:read clips:edit";
 
 struct AuthPromptState {
     std::mutex mutex;
@@ -284,6 +286,19 @@ inline std::string get_user_id(const std::string& client_id, const std::string& 
     if (data["data"].size() == 0) {
         throw std::runtime_error("Не удалось получить id канала " + login + ": пустой ответ");
     }
+    return std::string(data["data"][0]["id"].s());
+}
+
+inline std::optional<std::string> create_clip(const std::string& client_id, const std::string& access_token,
+                                               const std::string& broadcaster_id) {
+    auto api = make_https_client(kApiHost);
+    httplib::Headers headers{{"Client-Id", client_id}, {"Authorization", "Bearer " + access_token}};
+
+    auto resp = api.Post(("/helix/clips?broadcaster_id=" + url_encode(broadcaster_id)).c_str(), headers);
+    if (!resp || (resp->status != 200 && resp->status != 202)) return std::nullopt;
+
+    auto data = crow::json::load(resp->body);
+    if (!data || data["data"].size() == 0) return std::nullopt;
     return std::string(data["data"][0]["id"].s());
 }
 

@@ -4,6 +4,7 @@
 #include <httplib.h>
 
 #include <array>
+#include <chrono>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +31,7 @@
 #include "runtime_settings.hpp"
 #include "tts_worker.hpp"
 #include "twitch_auth.hpp"
+#include "yt_resolve.hpp"
 
 namespace streamsoft {
 
@@ -70,6 +72,8 @@ public:
     void set_twitch_outgoing(OutgoingQueue* queue) { twitch_outgoing_ = queue; }
     OutgoingQueue* twitch_outgoing() const { return twitch_outgoing_; }
 
+    void set_twitch_client_id(const std::string& client_id) { twitch_client_id_ = client_id; }
+
     std::optional<std::string> try_builtin_command(const std::string& username, const std::string& text) {
         std::string lower = trim(text);
         std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
@@ -90,10 +94,64 @@ public:
             if (song_enabled) {
                 help += " !song <ссылка YouTube/SoundCloud> — заказать музыку (" + std::to_string(cost) + " баллов).";
             }
+            if (!twitch_client_id_.empty()) help += " !clip — вырезать клип последних секунд стрима.";
             return help;
         }
 
+        if (lower == "!clip" || lower == "!клип") {
+            return try_create_clip(username);
+        }
+
         return std::nullopt;
+    }
+
+    std::optional<std::string> try_create_clip(const std::string& username) {
+        if (twitch_client_id_.empty() || broadcaster_name_.empty()) return std::nullopt;
+
+        {
+            std::lock_guard<std::mutex> lock(clip_mutex_);
+            auto now = std::chrono::steady_clock::now();
+            if (last_clip_time_ && std::chrono::duration_cast<std::chrono::seconds>(now - *last_clip_time_).count() <
+                                       kClipCooldownSeconds) {
+                return username + ", клип уже создаётся — подожди немного";
+            }
+            last_clip_time_ = now;
+        }
+
+        std::string client_id = twitch_client_id_;
+        std::string channel = broadcaster_name_;
+        std::thread([this, client_id, channel, username] {
+            try {
+                std::string token = twitch::get_access_token(client_id);
+                std::string broadcaster_id = resolve_broadcaster_id(client_id, token, channel);
+                auto clip_id = twitch::create_clip(client_id, token, broadcaster_id);
+                if (clip_id) {
+                    push_outgoing(username + ", клип готов: https://clips.twitch.tv/" + *clip_id);
+                } else {
+                    push_outgoing(username + ", не получилось создать клип (возможно, стрим сейчас офлайн)");
+                }
+            } catch (const std::exception& e) {
+                CROW_LOG_WARNING << "!clip: ошибка создания клипа: " << e.what();
+                push_outgoing(username + ", не получилось создать клип");
+            }
+        }).detach();
+
+        return username + ", создаю клип…";
+    }
+
+    std::string resolve_broadcaster_id(const std::string& client_id, const std::string& token, const std::string& channel) {
+        {
+            std::lock_guard<std::mutex> lock(clip_mutex_);
+            if (!twitch_broadcaster_id_.empty()) return twitch_broadcaster_id_;
+        }
+        std::string id = twitch::get_user_id(client_id, token, channel);
+        std::lock_guard<std::mutex> lock(clip_mutex_);
+        twitch_broadcaster_id_ = id;
+        return id;
+    }
+
+    void push_outgoing(const std::string& text) {
+        if (twitch_outgoing_) twitch_outgoing_->push(text);
     }
 
     std::optional<std::string> song_reminder_text() {
@@ -144,6 +202,26 @@ public:
     }
 
     void broadcast_now_playing() { broadcast_raw(now_playing_payload().dump()); }
+
+    bool try_youtube_fallback() {
+        auto pending = song_queue_.begin_youtube_fallback();
+        if (!pending) return false;
+        std::string video_id = pending->first;
+        int generation = pending->second;
+
+        std::thread([this, video_id, generation] {
+            auto direct_url = ytresolve::resolve_direct_audio_url("https://youtu.be/" + video_id);
+            if (direct_url && song_queue_.apply_direct_url(generation, *direct_url)) {
+                CROW_LOG_INFO << "song_queue: эмбед не сыграл, включаю " << video_id << " напрямую через yt-dlp";
+                broadcast_now_playing();
+            } else {
+                if (!direct_url) CROW_LOG_WARNING << "song_queue: yt-dlp не смог резолвнуть " << video_id << ", пропускаю трек";
+                song_queue_.advance();
+                broadcast_now_playing();
+            }
+        }).detach();
+        return true;
+    }
 
     crow::json::wvalue now_playing_payload() {
         auto payload = song_queue_.status();
@@ -905,9 +983,11 @@ private:
             .onmessage([this](crow::websocket::connection&, const std::string& text, bool) {
                 auto msg = crow::json::load(text);
                 if (msg && msg.has("type") && std::string(msg["type"].s()) == "song_ended") {
-                    if (msg.has("reason")) {
-                        CROW_LOG_WARNING << "song_queue: track ended abnormally (" << msg["reason"].s() << ")";
+                    std::string reason = msg.has("reason") ? std::string(msg["reason"].s()) : "";
+                    if (!reason.empty()) {
+                        CROW_LOG_WARNING << "song_queue: track ended abnormally (" << reason << ")";
                     }
+                    if (reason.rfind("yt_error_", 0) == 0 && try_youtube_fallback()) return;
                     song_queue_.advance();
                     broadcast_now_playing();
                 }
@@ -986,6 +1066,12 @@ private:
     std::function<bool()> rvc_start_;
     std::function<void()> rvc_stop_;
     OutgoingQueue* twitch_outgoing_ = nullptr;
+
+    static constexpr int kClipCooldownSeconds = 60;
+    std::string twitch_client_id_;
+    std::mutex clip_mutex_;
+    std::string twitch_broadcaster_id_;
+    std::optional<std::chrono::steady_clock::time_point> last_clip_time_;
 
     std::mutex connections_mutex_;
 
