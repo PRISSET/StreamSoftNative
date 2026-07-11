@@ -74,11 +74,43 @@
     ytPlayer = new YT.Player("yt-player", {
       height: "100%",
       width: "100%",
+      // controls/rel/modestbranding/iv_load_policy/disablekb/fs strip out
+      // everything the overlay doesn't need (related-video grid, YouTube
+      // chrome, keyboard shortcuts, annotations, fullscreen button) — this
+      // is a small always-on widget, not an interactive player, and the
+      // stripped-down chrome is measurably lighter for CEF (OBS's browser
+      // source) to render on every frame.
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        rel: 0,
+        modestbranding: 1,
+        iv_load_policy: 3,
+        disablekb: 1,
+        fs: 0,
+        playsinline: 1
+      },
       events: {
-        onReady: (e) => e.target.setVolume(currentVolume),
+        onReady: (e) => {
+          e.target.setVolume(currentVolume);
+          // The widget only ever displays at 480x270 — decoding whatever
+          // resolution YouTube defaults to (often 1080p) burns GPU/CPU for
+          // detail nobody can see at that size, and that's exactly the
+          // kind of load that shows up as dropped frames in OBS. This is
+          // just a hint (YouTube's player can ignore it), but costs
+          // nothing to ask.
+          try { e.target.setPlaybackQuality("small"); } catch (err) {}
+        },
         onStateChange: (e) => {
           if (e.data === YT.PlayerState.ENDED) sendSongEnded();
-        }
+        },
+        // Fires for region-locked/private/deleted videos and — most
+        // commonly — videos with embedding disabled by the uploader
+        // ("Video unavailable" in the player). There's no way to force
+        // those to play (nor should there be), so the only sane thing to
+        // do is treat it like the track ended and move on to the next
+        // request instead of leaving a dead player on screen.
+        onError: () => sendSongEnded()
       }
     });
     if (pendingYtVideoId) {
@@ -95,6 +127,11 @@
     if (ytReady && ytPlayer && ytPlayer.loadVideoById) {
       ytPlayer.loadVideoById(videoId);
       ytPlayer.setVolume(currentVolume);
+      // onReady only fires once, for the player's first load — every
+      // subsequent track needs this re-applied, or it defaults back to
+      // whatever resolution YouTube picks (usually far higher than this
+      // 480x270 widget can even show).
+      try { ytPlayer.setPlaybackQuality("small"); } catch (e) {}
     } else {
       pendingYtVideoId = videoId;
     }
@@ -113,6 +150,10 @@
     scWidget = SC.Widget(iframe);
     scWidget.bind(SC.Widget.Events.READY, () => scWidget.setVolume(currentVolume));
     scWidget.bind(SC.Widget.Events.FINISH, () => sendSongEnded());
+    // A track that's geo-blocked, private, or taken down fires ERROR
+    // instead of ever reaching FINISH — same "don't get stuck, just move
+    // on" handling as the YouTube player's onError above.
+    scWidget.bind(SC.Widget.Events.ERROR, () => sendSongEnded());
   }
 
   function applyVolume(volume) {
