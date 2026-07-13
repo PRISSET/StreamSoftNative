@@ -62,12 +62,15 @@ ApplicationWindow {
     property real blurAmount: 50
     readonly property real blurRadius: blurBackgroundEnabled ? (blurAmount / 100.0) * 6.0 : 0.0
 
+    property bool sidebarCollapsed: false
+
     Settings {
         property alias backgroundStyle: window.backgroundStyle
         property alias activeCustomIndex: window.activeCustomIndex
         property alias customThemesData: window.customThemesData
         property alias blurBackgroundEnabled: window.blurBackgroundEnabled
         property alias blurAmount: window.blurAmount
+        property alias sidebarCollapsed: window.sidebarCollapsed
     }
 
     function loadCustomThemes() {
@@ -205,11 +208,14 @@ ApplicationWindow {
         spacing: 0
 
         GlassSurface {
-            Layout.preferredWidth: 232
+            id: sidebar
+            Layout.preferredWidth: window.sidebarCollapsed ? 76 : 232
             Layout.fillHeight: true
             radiusPx: 0
             pad: 14
             refractPx: 12
+
+            Behavior on Layout.preferredWidth { NumberAnimation { duration: Theme.motionMed; easing.type: Theme.motionEasing } }
 
             Rectangle {
                 anchors.right: parent.right
@@ -220,23 +226,72 @@ ApplicationWindow {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 22
+                anchors.margins: window.sidebarCollapsed ? 12 : 22
                 spacing: 3
 
-                ColumnLayout {
-                    spacing: 2
+                Behavior on anchors.margins { NumberAnimation { duration: Theme.motionMed; easing.type: Theme.motionEasing } }
+
+                Item {
+                    Layout.fillWidth: true
                     Layout.bottomMargin: 20
-                    Text { text: "Stream Panel"; color: Theme.text; font.pixelSize: 14; font.bold: true }
-                    Text { text: "by PRISSETIK"; color: Theme.textFaint; font.pixelSize: 11 }
+                    implicitHeight: 34
+
+                    ColumnLayout {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        opacity: window.sidebarCollapsed ? 0 : 1
+                        visible: opacity > 0.01
+                        Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
+
+                        Text { text: "Stream Panel"; color: Theme.text; font.pixelSize: 14; font.bold: true }
+                        Text { text: "by PRISSETIK"; color: Theme.textFaint; font.pixelSize: 11 }
+                    }
+
+                    Item {
+                        id: collapseToggle
+                        width: 28
+                        height: 28
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: window.sidebarCollapsed ? (parent.width - width) / 2 : parent.width - width
+                        Behavior on x { NumberAnimation { duration: Theme.motionMed; easing.type: Theme.motionEasing } }
+
+                        GlassSurface {
+                            anchors.fill: parent
+                            radiusPx: height / 2
+                            pad: 6
+                            refractPx: 6
+                            specularStrength: 0.5
+                            tintColor: collapseHover.hovered ? Theme.glassFillHover : Theme.glassFill
+                            rimColor: collapseHover.hovered ? Theme.fieldBorderHover : Theme.glassBorder
+                            Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
+                            Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
+                        }
+
+                        HoverHandler { id: collapseHover }
+                        TapHandler {
+                            onTapped: window.sidebarCollapsed = !window.sidebarCollapsed
+                            cursorShape: Qt.PointingHandCursor
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: window.sidebarCollapsed ? "›" : "‹"
+                            color: Theme.text
+                            font.pixelSize: Theme.fontMd
+                            font.bold: true
+                        }
+                    }
                 }
 
                 Repeater {
-                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Опрос", "Музыка", "Замьюченные", "Настройки", "Обновления"]
+                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Опрос", "Музыка", "Соцсети", "Замьюченные", "Настройки", "Обновления"]
                     delegate: NavButton {
                         required property string modelData
                         required property int index
                         text: modelData
                         active: pageStack.currentIndex === index
+                        collapsed: window.sidebarCollapsed
                         onClicked: pageStack.currentIndex = index
                     }
                 }
@@ -249,6 +304,9 @@ ApplicationWindow {
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
+                    opacity: window.sidebarCollapsed ? 0 : 1
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
                 }
             }
         }
@@ -280,6 +338,7 @@ ApplicationWindow {
                 CommandsPage { id: commandsPage; width: pageStack.width }
                 PollPage { id: pollPage; width: pageStack.width }
                 MusicPage { id: musicPage; width: pageStack.width }
+                SocialPage { id: socialPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }

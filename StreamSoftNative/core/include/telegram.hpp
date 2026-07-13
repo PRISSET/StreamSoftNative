@@ -35,21 +35,19 @@ inline void send_message(const std::string& bot_token, const std::string& chat_i
 }
 
 inline std::string platform_label(const std::string& platform) {
-    if (platform == "youtube") return "\xF0\x9F\x94\xB4 YouTube";
-    if (platform == "twitch") return "\xF0\x9F\x92\x9C Twitch";
+    if (platform == "youtube") return "🔴 YouTube";
+    if (platform == "twitch") return "💜 Twitch";
     return platform;
 }
 
 inline std::string event_label(const std::string& kind) {
-    if (kind == "follow") return "\xF0\x9F\x92\x9A \xD0\x9D\xD0\xBE\xD0\xB2\xD1\x8B\xD0\xB9 \xD1\x84\xD0\xBE\xD0\xBB\xD0\xBB\xD0\xBE\xD1\x83";
+    if (kind == "follow") return "💚 Новый фоллоу";
     if (kind == "subscribe")
-        return "\xE2\xAD\x90 \xD0\x9D\xD0\xBE\xD0\xB2\xD0\xB0\xD1\x8F \xD0\xBF\xD0\xBE\xD0\xB4\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBA\xD0\xB0";
-    if (kind == "gift_sub")
-        return "\xF0\x9F\x8E\x81 \xD0\x9F\xD0\xBE\xD0\xB4\xD0\xB0\xD1\x80\xD0\xBE\xD1\x87\xD0\xBD\xD0\xB0\xD1\x8F "
-               "\xD0\xBF\xD0\xBE\xD0\xB4\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBA\xD0\xB0";
-    if (kind == "raid") return "\xF0\x9F\x9A\x80 \xD0\xA0\xD0\xB5\xD0\xB9\xD0\xB4";
+        return "⭐ Новая подписка";
+    if (kind == "gift_sub") return "🎁 Подарочная подписка";
+    if (kind == "raid") return "🚀 Рейд";
     if (kind == "cheer")
-        return "\xF0\x9F\x92\x8E \xD0\x94\xD0\xBE\xD0\xBD\xD0\xB0\xD1\x82 \xD0\xB1\xD0\xB8\xD1\x82\xD1\x81\xD0\xB0\xD0\xBC\xD0\xB8";
+        return "💎 Донат битсами";
     return kind;
 }
 
@@ -61,17 +59,23 @@ inline void notify_chat(const std::string& bot_token, const std::string& chat_id
 inline void notify_event(const std::string& bot_token, const std::string& chat_id, const std::string& kind,
                           const std::string& user, const std::string& detail) {
     std::string msg = event_label(kind) + "\n" + user;
-    if (!detail.empty()) msg += " \xE2\x80\x94 " + detail;
+    if (!detail.empty()) msg += " — " + detail;
     send_message(bot_token, chat_id, msg);
 }
 
+inline void notify_stream_start(const std::string& bot_token, const std::string& channel_id,
+                                 const std::string& twitch_channel) {
+    std::string msg = "🔴 Стрим начался!\nhttps://twitch.tv/" + twitch_channel;
+    send_message(bot_token, channel_id, msg);
+}
+
 inline const std::string kHelpText =
-    "\xD0\x9A\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xBD\xD0\xB4\xD1\x8B:\n"
-    "/mute <\xD0\xBD\xD0\xB8\xD0\xBA> \xE2\x80\x94 \xD0\xBD\xD0\xB5 \xD1\x87\xD0\xB8\xD1\x82\xD0\xB0\xD1\x82\xD1\x8C \xD0\xB8 \xD0\xBD\xD0\xB5 \xD0\xBF\xD0\xB5\xD1\x80\xD0\xB5\xD1\x81\xD1\x8B\xD0\xBB\xD0\xB0\xD1\x82\xD1\x8C \xD1\x81\xD0\xBE\xD0\xBE\xD0\xB1\xD1\x89\xD0\xB5\xD0\xBD\xD0\xB8\xD1\x8F \xD0\xBD\xD0\xB8\xD0\xBA\xD0\xB0\n"
-    "/unmute <\xD0\xBD\xD0\xB8\xD0\xBA> \xE2\x80\x94 \xD1\x81\xD0\xBD\xD1\x8F\xD1\x82\xD1\x8C \xD0\xBC\xD1\x8C\xD1\x8E\xD1\x82\n"
-    "/muted \xE2\x80\x94 \xD1\x81\xD0\xBF\xD0\xB8\xD1\x81\xD0\xBE\xD0\xBA \xD0\xB7\xD0\xB0\xD0\xBC\xD1\x8C\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD\xD0\xBD\xD1\x8B\xD1\x85\n"
-    "/skip \xE2\x80\x94 \xD0\xBF\xD1\x80\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB0\xD1\x82\xD1\x8C \xD1\x82\xD0\xB5\xD0\xBA\xD1\x83\xD1\x89\xD1\x83\xD1\x8E \xD0\xBE\xD0\xB7\xD0\xB2\xD1\x83\xD1\x87\xD0\xBA\xD1\x83 \xD0\xB8 \xD0\xBE\xD1\x87\xD0\xB8\xD1\x81\xD1\x82\xD0\xB8\xD1\x82\xD1\x8C \xD0\xBE\xD1\x87\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB4\xD1\x8C\n"
-    "/volume <0-200> \xE2\x80\x94 \xD0\xB3\xD1\x80\xD0\xBE\xD0\xBC\xD0\xBA\xD0\xBE\xD1\x81\xD1\x82\xD1\x8C TTS (100 = \xD0\xBE\xD0\xB1\xD1\x8B\xD1\x87\xD0\xBD\xD0\xB0\xD1\x8F)";
+    "Команды:\n"
+    "/mute <ник> — не читать и не пересылать сообщения ника\n"
+    "/unmute <ник> — снять мьют\n"
+    "/muted — список замьюченных\n"
+    "/skip — прервать текущую озвучку и очистить очередь\n"
+    "/volume <0-200> — громкость TTS (100 = обычная)";
 
 inline std::string trim(std::string s) {
     auto not_space = [](unsigned char c) { return !std::isspace(c); };
@@ -92,18 +96,18 @@ inline void handle_command(const std::string& bot_token, const std::string& chat
 
     if (command == "/mute") {
         if (arg.empty()) {
-            send_message(bot_token, chat_id, "\xD0\x98\xD1\x81\xD0\xBF\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5: /mute <\xD0\xBD\xD0\xB8\xD0\xBA>");
+            send_message(bot_token, chat_id, "Использование: /mute <ник>");
             return;
         }
         moderation.mute(arg);
-        send_message(bot_token, chat_id, "\xF0\x9F\x94\x87 " + arg + " \xD0\xB7\xD0\xB0\xD0\xBC\xD1\x8C\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD");
+        send_message(bot_token, chat_id, "🔇 " + arg + " замьючен");
     } else if (command == "/unmute") {
         if (arg.empty()) {
-            send_message(bot_token, chat_id, "\xD0\x98\xD1\x81\xD0\xBF\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5: /unmute <\xD0\xBD\xD0\xB8\xD0\xBA>");
+            send_message(bot_token, chat_id, "Использование: /unmute <ник>");
             return;
         }
         moderation.unmute(arg);
-        send_message(bot_token, chat_id, "\xF0\x9F\x94\x8A " + arg + " \xD1\x80\xD0\xB0\xD0\xB7\xD0\xBC\xD1\x8C\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD");
+        send_message(bot_token, chat_id, "🔊 " + arg + " размьючен");
     } else if (command == "/muted") {
         auto names = moderation.list_muted();
         std::string joined;
@@ -112,24 +116,24 @@ inline void handle_command(const std::string& bot_token, const std::string& chat
             joined += names[i];
         }
         send_message(bot_token, chat_id,
-                     "\xD0\x97\xD0\xB0\xD0\xBC\xD1\x8C\xD1\x8E\xD1\x87\xD0\xB5\xD0\xBD\xD1\x8B: " + (joined.empty() ? "\xD0\xBD\xD0\xB8\xD0\xBA\xD1\x82\xD0\xBE" : joined));
+                     "Замьючены: " + (joined.empty() ? "никто" : joined));
     } else if (command == "/skip") {
         bool stopped = tts && tts->skip_current();
         int cleared = tts ? tts->clear_queue() : 0;
         send_message(bot_token, chat_id,
-                     "\xE2\x8F\xAD \xD0\x9F\xD1\x80\xD0\xB5\xD1\x80\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xBE \xD1\x82\xD0\xB5\xD0\xBA\xD1\x83\xD1\x89\xD0\xB5\xD0\xB5: " +
-                         std::string(stopped ? "\xD0\xB4\xD0\xB0" : "\xD0\xBD\xD0\xB5\xD1\x82") +
-                         ". \xD0\xA3\xD0\xB1\xD1\x80\xD0\xB0\xD0\xBD\xD0\xBE \xD0\xB8\xD0\xB7 \xD0\xBE\xD1\x87\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB4\xD0\xB8: " +
+                     "⏭ Прервано текущее: " +
+                         std::string(stopped ? "да" : "нет") +
+                         ". Убрано из очереди: " +
                          std::to_string(cleared));
     } else if (command == "/volume") {
         bool all_digits = !arg.empty() && std::all_of(arg.begin(), arg.end(), [](unsigned char c) { return std::isdigit(c); });
         if (!all_digits) {
-            send_message(bot_token, chat_id, "\xD0\x98\xD1\x81\xD0\xBF\xD0\xBE\xD0\xBB\xD1\x8C\xD0\xB7\xD0\xBE\xD0\xB2\xD0\xB0\xD0\xBD\xD0\xB8\xD0\xB5: /volume <0-200>");
+            send_message(bot_token, chat_id, "Использование: /volume <0-200>");
             return;
         }
         int percent = std::stoi(arg);
         if (tts) tts->set_volume_percent(percent);
-        send_message(bot_token, chat_id, "\xF0\x9F\x94\x8A \xD0\x93\xD1\x80\xD0\xBE\xD0\xBC\xD0\xBA\xD0\xBE\xD1\x81\xD1\x82\xD1\x8C: " + std::to_string(percent) + "%");
+        send_message(bot_token, chat_id, "🔊 Громкость: " + std::to_string(percent) + "%");
     } else if (command == "/help" || command == "/start") {
         send_message(bot_token, chat_id, kHelpText);
     }
@@ -146,7 +150,7 @@ inline void watch_telegram_commands(const std::string& bot_token, const std::str
             std::string path = "/bot" + bot_token + "/getUpdates?offset=" + std::to_string(offset) + "&timeout=25";
             auto resp = cli.Get(path);
             if (!resp || resp->status != 200) {
-                CROW_LOG_ERROR << "\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0 \xD0\xBE\xD0\xBF\xD1\x80\xD0\xBE\xD1\x81\xD0\xB0 \xD0\xBA\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xBD\xD0\xB4 Telegram, \xD0\xBF\xD0\xBE\xD0\xB2\xD1\x82\xD0\xBE\xD1\x80 \xD1\x87\xD0\xB5\xD1\x80\xD0\xB5\xD0\xB7 5 \xD1\x81\xD0\xB5\xD0\xBA\xD1\x83\xD0\xBD\xD0\xB4";
+                CROW_LOG_ERROR << "Ошибка опроса команд Telegram, повтор через 5 секунд";
                 std::this_thread::sleep_for(std::chrono::seconds(5));
                 continue;
             }
@@ -180,11 +184,11 @@ inline void watch_telegram_commands(const std::string& bot_token, const std::str
                 try {
                     handle_command(bot_token, chat_id, text, moderation, tts);
                 } catch (const std::exception& e) {
-                    CROW_LOG_ERROR << "\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0 \xD0\xBE\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82\xD0\xBA\xD0\xB8 \xD0\xBA\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xBD\xD0\xB4\xD1\x8B Telegram: " << e.what();
+                    CROW_LOG_ERROR << "Ошибка обработки команды Telegram: " << e.what();
                 }
             }
         } catch (const std::exception& e) {
-            CROW_LOG_ERROR << "\xD0\x9E\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0 \xD0\xBE\xD0\xBF\xD1\x80\xD0\xBE\xD1\x81\xD0\xB0 \xD0\xBA\xD0\xBE\xD0\xBC\xD0\xB0\xD0\xBD\xD0\xB4 Telegram: " << e.what();
+            CROW_LOG_ERROR << "Ошибка опроса команд Telegram: " << e.what();
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }

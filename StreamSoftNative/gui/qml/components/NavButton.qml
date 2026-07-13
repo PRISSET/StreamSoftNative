@@ -6,6 +6,7 @@ Item {
     id: root
     property string text: ""
     property bool active: false
+    property bool collapsed: false
     signal clicked()
 
     Layout.fillWidth: true
@@ -36,7 +37,23 @@ Item {
         color: root.active ? "#ffffff" : "#b7b7bd"
         font.pixelSize: Theme.fontMd
         font.weight: Font.Medium
+        opacity: root.collapsed ? 0 : 1
+        visible: opacity > 0.01
 
+        Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
+    }
+
+    Text {
+        anchors.centerIn: parent
+        text: root.text.length > 0 ? root.text.charAt(0).toUpperCase() : ""
+        color: root.active ? "#ffffff" : "#b7b7bd"
+        font.pixelSize: Theme.fontMd
+        font.weight: Font.Medium
+        opacity: root.collapsed ? 1 : 0
+        visible: opacity > 0.01
+
+        Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
         Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 }

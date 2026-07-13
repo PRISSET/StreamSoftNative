@@ -180,6 +180,17 @@ inline void run_core() {
                     config.twitch_channel, config.twitch_client_id,
                     [&overlay, &tts, &config](const std::string& kind, const std::string& user,
                                                const std::string& detail) {
+                        if (kind == "stream_online") {
+                            if (config.should_post_social_telegram()) {
+                                std::string bot_token = config.telegram_bot_token;
+                                std::string channel_id = config.social_telegram_channel_id;
+                                std::string twitch_channel = config.twitch_channel;
+                                std::thread([bot_token, channel_id, twitch_channel] {
+                                    telegram::notify_stream_start(bot_token, channel_id, twitch_channel);
+                                }).detach();
+                            }
+                            return;
+                        }
                         overlay.broadcast_event(kind, user, detail);
                         tts.say_event(event_speech(kind, user, detail));
                         if (config.should_run_telegram()) {

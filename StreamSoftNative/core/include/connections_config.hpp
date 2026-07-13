@@ -25,6 +25,9 @@ struct ConnectionsConfig {
     bool telegram_enabled = false;
     bool telegram_control_enabled = false;
 
+    std::string social_telegram_channel_id;
+    bool social_telegram_enabled = false;
+
     bool tts_enabled = true;
     int tts_max_chars = 200;
 
@@ -35,12 +38,14 @@ struct ConnectionsConfig {
     bool has_twitch() const { return !twitch_client_id.empty() && !twitch_channel.empty(); }
     bool has_youtube() const { return !youtube_api_key.empty() && !youtube_video_id.empty(); }
     bool has_telegram() const { return !telegram_bot_token.empty() && !telegram_chat_id.empty(); }
+    bool has_social_telegram() const { return !telegram_bot_token.empty() && !social_telegram_channel_id.empty(); }
 
     bool should_run_twitch_chat() const { return twitch_chat_enabled && has_twitch(); }
     bool should_run_twitch_eventsub() const { return twitch_eventsub_enabled && has_twitch(); }
     bool should_run_youtube() const { return youtube_enabled && has_youtube(); }
     bool should_run_telegram() const { return telegram_enabled && has_telegram(); }
     bool should_run_telegram_control() const { return should_run_telegram() && telegram_control_enabled; }
+    bool should_post_social_telegram() const { return social_telegram_enabled && has_social_telegram(); }
 
     static ConnectionsConfig load() {
         std::ifstream f(kFile, std::ios::binary);
@@ -70,6 +75,8 @@ struct ConnectionsConfig {
                 str("telegram_chat_id", c.telegram_chat_id);
                 boolean("telegram_enabled", c.telegram_enabled);
                 boolean("telegram_control_enabled", c.telegram_control_enabled);
+                str("social_telegram_channel_id", c.social_telegram_channel_id);
+                boolean("social_telegram_enabled", c.social_telegram_enabled);
                 boolean("tts_enabled", c.tts_enabled);
                 integer("tts_max_chars", c.tts_max_chars);
                 boolean("obs_connected", c.obs_connected);
@@ -106,6 +113,8 @@ struct ConnectionsConfig {
         j["telegram_chat_id"] = telegram_chat_id;
         j["telegram_enabled"] = telegram_enabled;
         j["telegram_control_enabled"] = telegram_control_enabled;
+        j["social_telegram_channel_id"] = social_telegram_channel_id;
+        j["social_telegram_enabled"] = social_telegram_enabled;
         j["tts_enabled"] = tts_enabled;
         j["tts_max_chars"] = tts_max_chars;
         j["obs_connected"] = obs_connected;

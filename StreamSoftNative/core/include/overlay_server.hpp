@@ -371,6 +371,10 @@ private:
                 if (body.has("telegram_enabled")) c.telegram_enabled = body["telegram_enabled"].b();
                 if (body.has("telegram_control_enabled"))
                     c.telegram_control_enabled = body["telegram_control_enabled"].b();
+                if (body.has("social_telegram_channel_id"))
+                    c.social_telegram_channel_id = std::string(body["social_telegram_channel_id"].s());
+                if (body.has("social_telegram_enabled"))
+                    c.social_telegram_enabled = body["social_telegram_enabled"].b();
                 if (body.has("tts_enabled")) {
                     c.tts_enabled = body["tts_enabled"].b();
                     if (tts_) tts_->set_enabled(c.tts_enabled);
