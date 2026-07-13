@@ -13,7 +13,7 @@ ComboBox {
         refractPx: 9
         specularStrength: root.activeFocus || root.popup.visible ? 0.55 : 0.4
         tintColor: root.activeFocus || root.popup.visible ? Theme.glassFillHover : Theme.glassFill
-        rimColor: root.activeFocus || root.popup.visible ? Theme.glassBorderBright : Theme.glassBorder
+        rimColor: root.activeFocus || root.popup.visible ? (Theme.flatMode ? Theme.accent : Theme.glassBorderBright) : Theme.glassBorder
         Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
         Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
     }
@@ -95,7 +95,7 @@ ComboBox {
         }
         background: Rectangle {
             radius: Theme.radiusMd - 4
-            color: itemDelegate.highlighted ? Theme.glassFillHover : "#00ffffff"
+            color: itemDelegate.highlighted ? Theme.glassFillHover : Qt.rgba(Theme.glassFillHover.r, Theme.glassFillHover.g, Theme.glassFillHover.b, 0)
             Behavior on color { ColorAnimation { duration: Theme.motionFast } }
         }
     }

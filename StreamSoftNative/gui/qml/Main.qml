@@ -63,6 +63,10 @@ ApplicationWindow {
     readonly property real blurRadius: blurBackgroundEnabled ? (blurAmount / 100.0) * 6.0 : 0.0
 
     property bool sidebarCollapsed: false
+    property bool flatTheme: true
+    property int hoveredNavIndex: -1
+
+    Binding { target: Theme; property: "flatMode"; value: window.flatTheme }
 
     Settings {
         property alias backgroundStyle: window.backgroundStyle
@@ -71,6 +75,7 @@ ApplicationWindow {
         property alias blurBackgroundEnabled: window.blurBackgroundEnabled
         property alias blurAmount: window.blurAmount
         property alias sidebarCollapsed: window.sidebarCollapsed
+        property alias flatTheme: window.flatTheme
     }
 
     function loadCustomThemes() {
@@ -122,13 +127,14 @@ ApplicationWindow {
 
         Rectangle {
             anchors.fill: parent
-            color: "#000000"
+            color: window.flatTheme ? Theme.bg : "#000000"
         }
 
         Item {
             id: wallpaper
             anchors.fill: parent
-            layer.enabled: window.blurBackgroundEnabled && window.blurAmount > 0
+            visible: !window.flatTheme
+            layer.enabled: !window.flatTheme && window.blurBackgroundEnabled && window.blurAmount > 0
             layer.smooth: true
             layer.effect: MultiEffect {
                 blurEnabled: true
@@ -214,6 +220,7 @@ ApplicationWindow {
             radiusPx: 0
             pad: 14
             refractPx: 12
+            rimColor: "#00ffffff"
 
             Behavior on Layout.preferredWidth { NumberAnimation { duration: Theme.motionMed; easing.type: Theme.motionEasing } }
 
@@ -262,6 +269,7 @@ ApplicationWindow {
                             pad: 6
                             refractPx: 6
                             specularStrength: 0.5
+                            flatShadow: false
                             tintColor: collapseHover.hovered ? Theme.glassFillHover : Theme.glassFill
                             rimColor: collapseHover.hovered ? Theme.fieldBorderHover : Theme.glassBorder
                             Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
@@ -284,15 +292,46 @@ ApplicationWindow {
                     }
                 }
 
-                Repeater {
-                    model: ["Оверлей", "Подключения", "Голос", "Алерты и медиа", "Команды чата", "Опрос", "Музыка", "Соцсети", "Замьюченные", "Настройки", "Обновления"]
-                    delegate: NavButton {
-                        required property string modelData
-                        required property int index
-                        text: modelData
-                        active: pageStack.currentIndex === index
-                        collapsed: window.sidebarCollapsed
-                        onClicked: pageStack.currentIndex = index
+                Item {
+                    id: navListArea
+                    Layout.fillWidth: true
+                    implicitHeight: navColumn.implicitHeight
+
+                    HoverHandler {
+                        onHoveredChanged: if (!hovered) window.hoveredNavIndex = -1
+                    }
+
+                    ColumnLayout {
+                        id: navColumn
+                        width: parent.width
+                        spacing: 3
+
+                        Repeater {
+                            model: [
+                                { text: "Оверлей", icon: "overlay" },
+                                { text: "Подключения", icon: "connections" },
+                                { text: "Голос", icon: "voice" },
+                                { text: "Алерты и медиа", icon: "alerts" },
+                                { text: "Команды чата", icon: "commands" },
+                                { text: "Опрос", icon: "poll" },
+                                { text: "Музыка", icon: "music" },
+                                { text: "Соцсети", icon: "social" },
+                                { text: "Замьюченные", icon: "muted" },
+                                { text: "Настройки", icon: "settings" },
+                                { text: "Обновления", icon: "updates" }
+                            ]
+                            delegate: NavButton {
+                                required property var modelData
+                                required property int index
+                                text: modelData.text
+                                iconName: modelData.icon
+                                active: pageStack.currentIndex === index
+                                collapsed: window.sidebarCollapsed
+                                hovered: window.hoveredNavIndex === index
+                                onHoverEntered: window.hoveredNavIndex = index
+                                onClicked: pageStack.currentIndex = index
+                            }
+                        }
                     }
                 }
 

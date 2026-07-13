@@ -18,13 +18,14 @@ Slider {
             pad: 6
             refractPx: 5
             specularStrength: 0.4
+            flatShadow: false
         }
 
         Rectangle {
             width: root.visualPosition * parent.width
             height: parent.height
             radius: 4
-            color: "#6ee7a8"
+            color: Theme.accent
         }
     }
 

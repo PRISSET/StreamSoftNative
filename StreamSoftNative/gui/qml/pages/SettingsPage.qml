@@ -32,6 +32,96 @@ ColumnLayout {
     GlassCard {
         Layout.fillWidth: true
 
+        Text { text: "Оформление"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: 44
+
+                GlassSurface {
+                    anchors.fill: parent
+                    radiusPx: Theme.radiusMd
+                    pad: 8
+                    refractPx: 7
+                    tintColor: !root.win.flatTheme ? Theme.accentAlpha(0.22) : (glassHover.hovered ? Theme.glassFillHover : Theme.glassFill)
+                    rimColor: !root.win.flatTheme ? Theme.accent : Theme.glassBorder
+                    Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
+                    Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
+                }
+                HoverHandler { id: glassHover }
+                TapHandler {
+                    cursorShape: Qt.PointingHandCursor
+                    onTapped: { root.win.flatTheme = false; root.win.notifySaved() }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "Glass"
+                    color: !root.win.flatTheme ? "#ffffff" : Theme.textDim
+                    font.pixelSize: Theme.fontMd
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: 44
+
+                GlassSurface {
+                    anchors.fill: parent
+                    radiusPx: Theme.radiusMd
+                    pad: 8
+                    refractPx: 7
+                    tintColor: root.win.flatTheme ? Theme.accentAlpha(0.22) : (flatHover.hovered ? Theme.glassFillHover : Theme.glassFill)
+                    rimColor: root.win.flatTheme ? Theme.accent : Theme.glassBorder
+                    Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
+                    Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
+                }
+                HoverHandler { id: flatHover }
+                TapHandler {
+                    cursorShape: Qt.PointingHandCursor
+                    onTapped: { root.win.flatTheme = true; root.win.notifySaved() }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "Обычная"
+                    color: root.win.flatTheme ? "#ffffff" : Theme.textDim
+                    font.pixelSize: Theme.fontMd
+                    font.weight: Font.DemiBold
+                }
+            }
+        }
+
+        Text {
+            text: "«Обычная» — без эффекта стекла и блюра, фон зафиксирован одним цветом и его нельзя сменить. Подходит, если стекло не нравится или тормозит на слабом железе."
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+        visible: root.win.flatTheme
+
+        Text { text: "Фон приложения"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        Text {
+            text: "В «Обычной» теме фон зафиксирован — выбор картинки и блюр недоступны. Переключись на «Glass» выше, чтобы вернуть настройку фона."
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+        visible: !root.win.flatTheme
+
         Text { text: "Фон приложения"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
 
         GlassComboBox {
@@ -62,6 +152,7 @@ ColumnLayout {
 
     GlassCard {
         Layout.fillWidth: true
+        visible: !root.win.flatTheme
 
         Text { text: "Блюр фона"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
 
@@ -105,6 +196,7 @@ ColumnLayout {
 
     GlassCard {
         Layout.fillWidth: true
+        visible: !root.win.flatTheme
 
         Text { text: "Мои темы"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         Text {

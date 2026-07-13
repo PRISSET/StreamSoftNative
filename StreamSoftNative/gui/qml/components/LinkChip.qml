@@ -17,6 +17,7 @@ Item {
         pad: 8
         refractPx: 7
         specularStrength: 0.45
+        flatShadow: false
         tintColor: hover.hovered ? Theme.glassFillHover : Theme.glassFill
         rimColor: hover.hovered ? Theme.fieldBorderHover : Theme.glassBorder
         Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }

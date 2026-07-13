@@ -36,7 +36,7 @@ Rectangle {
     TapHandler { id: press; enabled: root.enabled; onTapped: root.clicked() }
 
     Rectangle {
-        visible: !root.danger
+        visible: !root.danger && !Theme.flatMode
         anchors.fill: parent
         radius: parent.radius
         gradient: Gradient {

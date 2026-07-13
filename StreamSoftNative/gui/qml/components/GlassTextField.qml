@@ -20,7 +20,7 @@ TextField {
         refractPx: 9
         specularStrength: root.activeFocus ? 0.55 : 0.4
         tintColor: root.activeFocus ? Theme.glassFillHover : Theme.glassFill
-        rimColor: root.activeFocus ? Theme.glassBorderBright : (hoverHandler.hovered ? Theme.fieldBorderHover : Theme.glassBorder)
+        rimColor: root.activeFocus ? (Theme.flatMode ? Theme.accent : Theme.glassBorderBright) : (hoverHandler.hovered ? Theme.fieldBorderHover : Theme.glassBorder)
         Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
         Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
     }

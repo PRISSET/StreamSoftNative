@@ -5,9 +5,12 @@ import StreamSoftGui
 Item {
     id: root
     property string text: ""
+    property string iconName: ""
     property bool active: false
     property bool collapsed: false
+    property bool hovered: false
     signal clicked()
+    signal hoverEntered()
 
     Layout.fillWidth: true
     implicitHeight: 40
@@ -20,13 +23,14 @@ Item {
         pad: 10
         refractPx: 8
         specularStrength: 0.5
-        tintColor: root.active ? Theme.glassFillActive : (hover.hovered ? Theme.glassFillHover : "#00ffffff")
-        rimColor: root.active ? Theme.glassBorderBright : "#00ffffff"
+        flatShadow: false
+        tintColor: root.active ? Theme.glassFillActive : (root.hovered ? Theme.glassFillHover : Qt.rgba(Theme.glassFillHover.r, Theme.glassFillHover.g, Theme.glassFillHover.b, 0))
+        rimColor: root.active ? Theme.glassBorderBright : Qt.rgba(Theme.glassBorderBright.r, Theme.glassBorderBright.g, Theme.glassBorderBright.b, 0)
         Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
         Behavior on rimColor { ColorAnimation { duration: Theme.motionFast } }
     }
 
-    HoverHandler { id: hover }
+    HoverHandler { id: hover; onHoveredChanged: if (hovered) root.hoverEntered() }
     TapHandler { id: press; onTapped: root.clicked() }
 
     Text {
@@ -44,16 +48,13 @@ Item {
         Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 
-    Text {
+    NavIcon {
         anchors.centerIn: parent
-        text: root.text.length > 0 ? root.text.charAt(0).toUpperCase() : ""
-        color: root.active ? "#ffffff" : "#b7b7bd"
-        font.pixelSize: Theme.fontMd
-        font.weight: Font.Medium
+        icon: root.iconName
+        strokeColor: root.active ? "#ffffff" : "#b7b7bd"
         opacity: root.collapsed ? 1 : 0
         visible: opacity > 0.01
 
         Behavior on opacity { NumberAnimation { duration: Theme.motionFast } }
-        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
     }
 }

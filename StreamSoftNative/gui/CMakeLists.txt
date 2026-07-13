@@ -34,6 +34,7 @@ qt_add_qml_module(streamsoft_gui
         qml/components/SectionHeader.qml
         qml/components/PillButton.qml
         qml/components/NavButton.qml
+        qml/components/NavIcon.qml
         qml/components/GlassTextField.qml
         qml/components/GlassComboBox.qml
         qml/components/GlassSlider.qml
@@ -97,7 +98,7 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
     STREAMSOFT_YTDLP_PATH="${STREAMSOFT_YTDLP_PATH}"
-    STREAMSOFT_VERSION="1.0.3"
+    STREAMSOFT_VERSION="1.0.4"
     QT_NO_KEYWORDS
 )
 

@@ -21,8 +21,9 @@ Switch {
             pad: 8
             refractPx: 7
             specularStrength: 0.6
+            flatShadow: false
             tintColor: root.checked
-                ? (root.hovered ? "#596ee7a8" : "#406ee7a8")
+                ? (root.hovered ? Theme.accentAlpha(0.35) : Theme.accentAlpha(0.25))
                 : (root.hovered ? Theme.glassFillHover : Theme.glassFill)
             Behavior on tintColor { ColorAnimation { duration: Theme.motionFast } }
         }
@@ -32,12 +33,12 @@ Switch {
             anchors.fill: track
             radius: track.radiusPx
             border.width: 1
-            border.color: "#5a6ee7a8"
+            border.color: Theme.accentAlpha(0.35)
             color: "transparent"
         }
 
         Rectangle {
-            visible: root.checked
+            visible: root.checked && !Theme.flatMode
             anchors.fill: track
             radius: track.radiusPx
             gradient: Gradient {
