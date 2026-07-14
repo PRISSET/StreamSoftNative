@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Stream Chat Overlay — сейчас играет</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  /* Unlike chat/events/poll, this page IS the widget — not a huge
+     transparent canvas with a small widget pinned in a corner of it. The
+     OBS browser source for this page is created at its own native size
+     (see obs_client.hpp/obs_scene_file.hpp — 480x270, not the stream
+     canvas), so the user can freely resize/reposition it in OBS like any
+     normal source and get a crisp, correctly-scaled result — sizing this
+     relative to an assumed-huge canvas (the old vw-based approach) broke
+     the moment the source's actual configured resolution didn't match
+     that assumption, which is exactly what made it render tiny and blurry. */
+  #player-container {
+    width: 100%;
+    height: 100%;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  #player-container.hidden { display: none; }
+  #yt-player, #sc-player, #sc-iframe { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<div id="player-container" class="hidden">
+  <div id="yt-player"></div>
+  <div id="sc-player"></div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="https://w.soundcloud.com/player/api.js"></script>
+<script>
+  // Core only tracks *what* should be playing (see song_queue.hpp) —
+  // actual playback and "did it end" detection happens here, client-side,
+  // via YouTube's and SoundCloud's own official embed player JS APIs.
+  // song_ended goes back over the same /ws connection so core can advance
+  // the queue — the only bidirectional use of that socket (every other
+  // overlay page only ever receives).
+  let ws;
+  let ytPlayer = null;
+  let scWidget = null;
+  // Set only inside onReady — YT.Player(...) returns long before the
+  // embed's internal iframe/postMessage bridge is actually up, so it's NOT
+  // safe to call loadVideoById() right after construction (see onReady's
+  // comment below for what that used to break).
+  let ytPlayerReady = false;
+  let pendingYtVideoId = null;
+  let currentVolume = 80;
+  // Every settings change and every queue mutation (even ones that don't
+  // touch the current track, e.g. someone else's request landing behind it)
+  // re-broadcasts now_playing — without tracking what's actually loaded,
+  // playYoutube/playSoundcloud below would reload the same track on every
+  // one of those and restart it from 0:00 mid-playback.
+  let currentKey = null;
+
+  function connectWs() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "now_playing") applyNowPlaying(data);
+    };
+    ws.onclose = () => setTimeout(connectWs, 2000);
+    ws.onerror = () => ws.close();
+  }
+
+  function sendSongEnded(reason) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const msg = { type: "song_ended" };
+      if (reason) msg.reason = reason;
+      ws.send(JSON.stringify(msg));
+    }
+  }
+
+  function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player("yt-player", {
+      height: "100%",
+      width: "100%",
+      // controls/rel/modestbranding/iv_load_policy/disablekb/fs strip out
+      // everything the overlay doesn't need (related-video grid, YouTube
+      // chrome, keyboard shortcuts, annotations, fullscreen button) — this
+      // is a small always-on widget, not an interactive player, and the
+      // stripped-down chrome is measurably lighter for CEF (OBS's browser
+      // source) to render on every frame.
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        rel: 0,
+        modestbranding: 1,
+        iv_load_policy: 3,
+        disablekb: 1,
+        fs: 0,
+        playsinline: 1
+      },
+      events: {
+        onReady: (e) => {
+          ytPlayerReady = true;
+          e.target.setVolume(currentVolume);
+          // The widget only ever displays at 480x270 — decoding whatever
+          // resolution YouTube defaults to (often 1080p) burns GPU/CPU for
+          // detail nobody can see at that size, and that's exactly the
+          // kind of load that shows up as dropped frames in OBS. This is
+          // just a hint (YouTube's player can ignore it), but costs
+          // nothing to ask.
+          try { e.target.setPlaybackQuality("small"); } catch (err) {}
+          // new YT.Player(...) returns before the embed's internal iframe/
+          // postMessage bridge is actually up — calling mute()/loadVideoById
+          // synchronously right after construction (as this used to do)
+          // hits the player mid-init and YouTube answers with error 2
+          // ("invalid parameter"), which onError below then treats as an
+          // unplayable track and skips — so a queued song never actually
+          // played, just silently vanished. onReady is the first point
+          // those calls are guaranteed to land on a live player.
+          if (pendingYtVideoId) {
+            const videoId = pendingYtVideoId;
+            pendingYtVideoId = null;
+            try { e.target.mute(); } catch (err) {}
+            e.target.loadVideoById(videoId);
+          }
+        },
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.ENDED) sendSongEnded();
+          // Browsers block autoplay-with-sound outright — an unmuted
+          // loadVideoById() just sits there in the CUED state forever,
+          // never actually starting, which is exactly what "просто белый
+          // экран, ничего не играет" was: the player loaded fine, it just
+          // never got permission to make sound. Muted autoplay is always
+          // allowed, so playYoutube() below starts muted and this unmutes
+          // the instant real playback begins (BUFFERING/PLAYING) — the
+          // muted window is milliseconds, not audible as a gap.
+          if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING) {
+            try {
+              e.target.unMute();
+              e.target.setVolume(currentVolume);
+            } catch (err) {}
+          }
+        },
+        // Fires for region-locked/private/deleted videos and — most
+        // commonly — videos with embedding disabled by the uploader
+        // ("Video unavailable" in the player). There's no way to force
+        // those to play (nor should there be), so the only sane thing to
+        // do is treat it like the track ended and move on to the next
+        // request instead of leaving a dead player on screen.
+        onError: (e) => {
+          // e.data is a YT error code (2 invalid id, 5 HTML5 player error,
+          // 100 not found/private, 101/150 embedding disabled by owner) —
+          // sent back to core's log (and echoed to the browser console) so
+          // a run stuck on "nothing plays" is diagnosable without needing
+          // devtools open on the machine actually running OBS.
+          console.warn("[nowplaying] YouTube onError, code:", e.data);
+          sendSongEnded("yt_error_" + e.data);
+        }
+      }
+    });
+  }
+
+  function pauseDirect() {
+    const audioEl = document.getElementById("direct-audio");
+    if (audioEl) { try { audioEl.pause(); } catch (e) {} }
+  }
+
+  function playYoutube(videoId) {
+    document.getElementById("player-container").classList.remove("hidden");
+    document.getElementById("yt-player").style.display = "block";
+    document.getElementById("sc-player").style.display = "none";
+    if (scWidget) { try { scWidget.pause(); } catch (e) {} }
+    pauseDirect();
+    if (ytPlayerReady && ytPlayer && ytPlayer.loadVideoById) {
+      // Start muted — see the onStateChange comment above. unMute() fires
+      // as soon as the state change confirms it's actually playing.
+      try { ytPlayer.mute(); } catch (e) {}
+      ytPlayer.loadVideoById(videoId);
+      // onReady only fires once, for the player's first load — every
+      // subsequent track needs this re-applied, or it defaults back to
+      // whatever resolution YouTube picks (usually far higher than this
+      // 480x270 widget can even show).
+      try { ytPlayer.setPlaybackQuality("small"); } catch (e) {}
+    } else {
+      pendingYtVideoId = videoId;
+    }
+  }
+
+  function playDirect(streamUrl) {
+    document.getElementById("player-container").classList.remove("hidden");
+    document.getElementById("yt-player").style.display = "none";
+    document.getElementById("sc-player").style.display = "none";
+    if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+    if (scWidget) { try { scWidget.pause(); } catch (e) {} }
+
+    let audioEl = document.getElementById("direct-audio");
+    if (!audioEl) {
+      audioEl = document.createElement("audio");
+      audioEl.id = "direct-audio";
+      document.body.appendChild(audioEl);
+      audioEl.addEventListener("ended", () => sendSongEnded());
+      audioEl.addEventListener("error", () => sendSongEnded("direct_error"));
+    }
+    audioEl.volume = currentVolume / 100;
+    audioEl.src = streamUrl;
+    audioEl.play().catch(() => sendSongEnded("direct_error"));
+  }
+
+  function playSoundcloud(trackUrl) {
+    document.getElementById("player-container").classList.remove("hidden");
+    document.getElementById("yt-player").style.display = "none";
+    const scSlot = document.getElementById("sc-player");
+    scSlot.style.display = "block";
+    scSlot.innerHTML = `<iframe id="sc-iframe" width="100%" height="100%" scrolling="no" frameborder="no"
+      src="https://w.soundcloud.com/player/?url=${encodeURIComponent(trackUrl)}&auto_play=true"></iframe>`;
+    if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+    pauseDirect();
+
+    const iframe = document.getElementById("sc-iframe");
+    scWidget = SC.Widget(iframe);
+    scWidget.bind(SC.Widget.Events.READY, () => scWidget.setVolume(currentVolume));
+    scWidget.bind(SC.Widget.Events.FINISH, () => sendSongEnded());
+    // A track that's geo-blocked, private, or taken down fires ERROR
+    // instead of ever reaching FINISH — same "don't get stuck, just move
+    // on" handling as the YouTube player's onError above.
+    scWidget.bind(SC.Widget.Events.ERROR, () => sendSongEnded("sc_error"));
+  }
+
+  function applyVolume(volume) {
+    if (typeof volume !== "number") return;
+    currentVolume = Math.max(0, Math.min(100, volume));
+    if (ytPlayer && ytPlayer.setVolume) { try { ytPlayer.setVolume(currentVolume); } catch (e) {} }
+    if (scWidget && scWidget.setVolume) { try { scWidget.setVolume(currentVolume); } catch (e) {} }
+    const audioEl = document.getElementById("direct-audio");
+    if (audioEl) audioEl.volume = currentVolume / 100;
+  }
+
+  function applyNowPlaying(data) {
+    applyVolume(data.volume);
+
+    if (!data.current) {
+      currentKey = null;
+      // Hiding the container only hides it visually — the YT iframe/SC
+      // widget keep playing audio in the background unless told to stop.
+      // This is why Skip/Clear looked like they did nothing: the track
+      // kept audibly playing even though the (invisible) player moved on.
+      if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+      if (scWidget && scWidget.pause) { try { scWidget.pause(); } catch (e) {} }
+      const audioEl = document.getElementById("direct-audio");
+      if (audioEl) { try { audioEl.pause(); } catch (e) {} }
+      document.getElementById("player-container").classList.add("hidden");
+      return;
+    }
+
+    const key = data.current.platform + ":" + data.current.ref;
+    if (key === currentKey) return; // same track still playing — don't reload it
+    currentKey = key;
+
+    if (data.current.platform === "youtube") playYoutube(data.current.ref);
+    else if (data.current.platform === "soundcloud") playSoundcloud(data.current.ref);
+    else if (data.current.platform === "direct") playDirect(data.current.ref);
+  }
+
+  connectWs();
+</script>
+</body>
+</html>
