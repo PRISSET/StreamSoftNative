@@ -119,6 +119,39 @@ ColumnLayout {
 
         GlassToggle { id: twitchChatToggle; text: "Читать чат Twitch"; onToggled: root.save() }
         GlassToggle { id: twitchEventsToggle; text: "Алерты Twitch (фоллоу/подписки/рейды/донаты)"; onToggled: root.save() }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 10
+            PillButton {
+                text: "Переавторизовать Twitch"
+                onClicked: {
+                    reauthStatus.text = "Открываю окно авторизации…"
+                    reauthStatus.opacity = 1
+                    api.post("/api/twitch/reauth", { client_id: twitchClientId.text }, function (ok) {
+                        if (!ok) { reauthStatus.text = "Не получилось начать авторизацию."; reauthStatusTimer.restart() }
+                    }, false)
+                }
+            }
+            Text {
+                text: "Если чат/алерты не подключаются сами — сбросит сохранённый вход и попросит войти в Twitch заново."
+                color: Theme.textFaint
+                font.pixelSize: Theme.fontSm
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+        }
+        Text {
+            id: reauthStatus
+            color: Theme.textDim
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            opacity: 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+        }
+        Timer { id: reauthStatusTimer; interval: 4000; onTriggered: reauthStatus.opacity = 0 }
     }
 
     GlassCard {

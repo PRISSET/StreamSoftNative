@@ -520,6 +520,31 @@ private:
                 std::thread(streamsoft::twitch::run_manual_auth, client_id).detach();
                 return crow::response(R"({"ok": true})");
             });
+
+        // Same device-code flow as start-auth, but drops the cached token
+        // first — get_access_token() normally reuses/refreshes a cached
+        // token silently, so if it's stuck in a bad state (revoked, wrong
+        // scopes from an old install, etc.) there was previously no way for
+        // the user to force a truly fresh login from the GUI.
+        CROW_ROUTE(app_, "/api/twitch/reauth")
+            .methods(crow::HTTPMethod::Post)([](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string client_id =
+                    (body && body.has("client_id")) ? std::string(body["client_id"].s()) : std::string();
+                if (client_id.empty()) client_id = ConnectionsConfig::load().twitch_client_id;
+                if (client_id.empty()) return crow::response(400, R"({"ok": false, "error": "no client_id"})");
+
+                streamsoft::twitch::invalidate_cached_token();
+                {
+                    auto& s = streamsoft::twitch::auth_prompt_state();
+                    std::lock_guard<std::mutex> lock(s.mutex);
+                    s.last_result.clear();
+                    s.last_username.clear();
+                    s.last_error.clear();
+                }
+                std::thread(streamsoft::twitch::run_manual_auth, client_id).detach();
+                return crow::response(R"({"ok": true})");
+            });
     }
 
     void setup_obs_routes() {
@@ -1017,9 +1042,13 @@ private:
                 body += l;
                 body += '\n';
             }
-            crow::response resp(body);
-            resp.set_header("Content-Type", "text/plain; charset=utf-8");
-            return resp;
+            // The GUI's ApiClient only understands JSON responses (it parses
+            // every reply as JSON and hands the caller undefined otherwise),
+            // so wrap the plain-text log instead of serving it raw.
+            crow::json::wvalue resp;
+            resp["ok"] = true;
+            resp["text"] = body;
+            return crow::response(resp.dump());
         });
     }
 

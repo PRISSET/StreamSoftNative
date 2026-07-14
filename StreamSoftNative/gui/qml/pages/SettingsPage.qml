@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Window
 import QtQuick.Effects
@@ -10,6 +11,12 @@ ColumnLayout {
     spacing: 18
 
     readonly property var win: root.Window.window
+
+    function refreshLog() {
+        api.get("/api/log?lines=300", function (ok, data) {
+            logText.text = ok && data.text ? data.text : "Лог пока пуст или недоступен."
+        })
+    }
 
     FileDialog {
         id: bgFileDialog
@@ -277,6 +284,58 @@ ColumnLayout {
                 onClicked: bgFileDialog.open()
             }
         }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Логи"
+            subtitle: "Последние строки streamsoft.log — полезно для диагностики, если что-то не подключается (Twitch, TTS и т.д.)."
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            PillButton {
+                text: "Обновить"
+                onClicked: root.refreshLog()
+            }
+            PillButton {
+                text: "Скопировать"
+                onClicked: { logText.selectAll(); logText.copy(); logText.deselect() }
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 260
+            radius: Theme.radiusMd
+            color: Theme.fieldBg
+            border.width: 1
+            border.color: Theme.fieldBorder
+
+            ScrollView {
+                anchors.fill: parent
+                anchors.margins: 10
+                clip: true
+
+                TextArea {
+                    id: logText
+                    readOnly: true
+                    wrapMode: TextArea.NoWrap
+                    color: Theme.textDim
+                    font.family: "Consolas"
+                    font.pixelSize: 11
+                    selectByMouse: true
+                    background: null
+                }
+            }
+        }
+
+        Component.onCompleted: root.refreshLog()
     }
 
     Item { Layout.fillHeight: true }
