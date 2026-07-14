@@ -31,6 +31,7 @@ struct RuntimeSettings {
     bool song_requests_enabled = false;
     int song_request_cost = 50;
     int song_request_volume = 80;
+    int points_per_message = 1;
 
     static constexpr const char* kFile = "runtime_settings.json";
 
@@ -67,6 +68,7 @@ struct RuntimeSettings {
         if (j.has("song_requests_enabled")) s.song_requests_enabled = j["song_requests_enabled"].b();
         if (j.has("song_request_cost")) s.song_request_cost = static_cast<int>(j["song_request_cost"].i());
         if (j.has("song_request_volume")) s.song_request_volume = static_cast<int>(j["song_request_volume"].i());
+        if (j.has("points_per_message")) s.points_per_message = static_cast<int>(j["points_per_message"].i());
 
         return s;
     }
@@ -95,6 +97,7 @@ struct RuntimeSettings {
         j["song_requests_enabled"] = song_requests_enabled;
         j["song_request_cost"] = song_request_cost;
         j["song_request_volume"] = song_request_volume;
+        j["points_per_message"] = points_per_message;
         return j;
     }
 

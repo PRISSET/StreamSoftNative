@@ -15,6 +15,7 @@ ColumnLayout {
         enabledToggle.checked = !!settings.song_requests_enabled
         costSlider.value = settings.song_request_cost !== undefined ? settings.song_request_cost : 50
         volumeSlider.value = settings.song_request_volume !== undefined ? settings.song_request_volume : 80
+        pointsSlider.value = settings.points_per_message !== undefined ? settings.points_per_message : 1
         loading = false
     }
 
@@ -23,7 +24,8 @@ ColumnLayout {
         api.post("/api/settings", {
             song_requests_enabled: enabledToggle.checked,
             song_request_cost: Math.round(costSlider.value),
-            song_request_volume: Math.round(volumeSlider.value)
+            song_request_volume: Math.round(volumeSlider.value),
+            points_per_message: Math.round(pointsSlider.value)
         }, function () {})
     }
 
@@ -72,6 +74,18 @@ ColumnLayout {
             id: enabledToggle
             text: "Включить реквесты музыки за баллы"
             onToggled: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Баллов за 1 сообщение в чате"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: Math.round(pointsSlider.value) + (Math.round(pointsSlider.value) === 1 ? " балл" : " баллов"); color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: pointsSlider
+            Layout.fillWidth: true
+            from: 0; to: 20; stepSize: 1
+            onMoved: root.save()
         }
 
         RowLayout {

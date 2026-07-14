@@ -252,6 +252,7 @@ inline SceneFileResult ensure_browser_sources_via_file(int overlay_port) {
     ensure_one_source(root, scene_index, "StreamSoft Alerts", base + "/events", 820, 900);
     ensure_one_source(root, scene_index, "StreamSoft Poll", base + "/poll", 640, 680);
     ensure_one_source(root, scene_index, "StreamSoft Now Playing", base + "/nowplaying", 480, 270);
+    ensure_one_source(root, scene_index, "StreamSoft Faceit", base + "/faceit", 820, 300);
 
     try {
         std::ofstream out(scene_file, std::ios::binary | std::ios::trunc);

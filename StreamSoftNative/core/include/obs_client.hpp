@@ -52,6 +52,8 @@ public:
     static constexpr int kPollHeight = 680;
     static constexpr int kNowPlayingWidth = 480;
     static constexpr int kNowPlayingHeight = 270;
+    static constexpr int kFaceitWidth = 820;
+    static constexpr int kFaceitHeight = 300;
 
     ~ObsClient() { ws_.stop(); }
 
@@ -137,6 +139,8 @@ public:
                    has_source("StreamSoft Poll"));
         ensure_one(scene_name, "StreamSoft Now Playing", base + "/nowplaying", kNowPlayingWidth, kNowPlayingHeight,
                    has_source("StreamSoft Now Playing"));
+        ensure_one(scene_name, "StreamSoft Faceit", base + "/faceit", kFaceitWidth, kFaceitHeight,
+                   has_source("StreamSoft Faceit"));
     }
 
 private:

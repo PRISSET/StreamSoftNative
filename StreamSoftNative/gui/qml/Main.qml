@@ -315,7 +315,9 @@ ApplicationWindow {
                                 { text: "Команды чата", icon: "commands" },
                                 { text: "Опрос", icon: "poll" },
                                 { text: "Музыка", icon: "music" },
+                                { text: "Гифки", icon: "gifs" },
                                 { text: "Соцсети", icon: "social" },
+                                { text: "Faceit", icon: "faceit" },
                                 { text: "Замьюченные", icon: "muted" },
                                 { text: "Настройки", icon: "settings" },
                                 { text: "Обновления", icon: "updates" }
@@ -377,7 +379,9 @@ ApplicationWindow {
                 CommandsPage { id: commandsPage; width: pageStack.width }
                 PollPage { id: pollPage; width: pageStack.width }
                 MusicPage { id: musicPage; width: pageStack.width }
+                GifsPage { id: gifsPage; width: pageStack.width }
                 SocialPage { id: socialPage; width: pageStack.width }
+                FaceitPage { id: faceitPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }

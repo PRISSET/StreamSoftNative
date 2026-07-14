@@ -16,7 +16,6 @@ namespace streamsoft {
 class PointsStore {
 public:
     static constexpr const char* kFile = "points.json";
-    static constexpr int kPointsPerMessage = 1;
     static constexpr int kAwardCooldownSeconds = 30;
 
     PointsStore() { load(); }
@@ -45,7 +44,8 @@ public:
         f << j.dump();
     }
 
-    void award_for_message(const std::string& username) {
+    void award_for_message(const std::string& username, int amount) {
+        if (amount <= 0) return;
         std::lock_guard<std::mutex> lock(mutex_);
         auto now = std::chrono::steady_clock::now();
         auto it = last_award_.find(username);
@@ -54,7 +54,7 @@ public:
             if (elapsed < kAwardCooldownSeconds) return;
         }
         last_award_[username] = now;
-        balances_[username] += kPointsPerMessage;
+        balances_[username] += amount;
         save_unlocked();
     }
 

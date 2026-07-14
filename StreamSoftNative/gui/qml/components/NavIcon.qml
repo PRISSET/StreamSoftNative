@@ -140,6 +140,27 @@ Canvas {
                 ctx.arc(dots[i], rows[i], 1.8, 0, Math.PI * 2)
                 ctx.fill()
             }
+        } else if (icon === "gifs") {
+            ctx.beginPath()
+            ctx.rect(2.5, 3.5, w - 5, h - 7)
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.moveTo(w / 2 - 2, h / 2 - 3.2)
+            ctx.lineTo(w / 2 - 2, h / 2 + 3.2)
+            ctx.lineTo(w / 2 + 3.2, h / 2)
+            ctx.closePath()
+            ctx.fill()
+        } else if (icon === "faceit") {
+            ctx.beginPath()
+            ctx.moveTo(w / 2, 2.5)
+            ctx.lineTo(w - 2.5, h / 2)
+            ctx.lineTo(w / 2, h - 2.5)
+            ctx.lineTo(2.5, h / 2)
+            ctx.closePath()
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.arc(w / 2, h / 2, 1.8, 0, Math.PI * 2)
+            ctx.fill()
         } else if (icon === "updates") {
             ctx.beginPath()
             ctx.arc(w / 2, h / 2, 6, Math.PI * 0.15, Math.PI * 1.75, false)

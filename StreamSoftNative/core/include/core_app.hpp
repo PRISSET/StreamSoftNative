@@ -4,6 +4,7 @@
 #include "auto_update.hpp"
 #include "connections_config.hpp"
 #include "discord_presence.hpp"
+#include "faceit_client.hpp"
 #include "file_logger.hpp"
 #include "outgoing_queue.hpp"
 #include "overlay_server.hpp"
@@ -80,6 +81,10 @@ inline void run_core() {
                           runtime.rvc_protect, runtime.rvc_f0method);
     if (rvc_process.running) tts.set_rvc_port(kRvcPort);
 
+    faceit::FaceitClient faceit;
+    overlay.set_faceit_client(&faceit);
+    if (config.should_run_faceit()) faceit.start(config.faceit_nickname, config.faceit_api_key);
+
     std::mutex adapter_mutex;
 
     set_module_installed_callback("tts", [&tts_process, &adapter_mutex, kTtsPort] {
@@ -140,6 +145,12 @@ inline void run_core() {
                         auto song_reply = overlay.try_song_request(author, text);
                         if (song_reply) {
                             twitch_outgoing.push(*song_reply);
+                            return;
+                        }
+
+                        auto gif_reply = overlay.try_gif_request(author, text);
+                        if (gif_reply) {
+                            twitch_outgoing.push(*gif_reply);
                             return;
                         }
 
@@ -212,6 +223,7 @@ inline void run_core() {
                         if (overlay.try_poll_vote(author, text)) return;
                         if (overlay.try_builtin_command(author, text)) return;
                         if (overlay.try_song_request(author, text)) return;
+                        if (overlay.try_gif_request(author, text)) return;
 
                         overlay.broadcast_chat("youtube", author, text);
                         overlay.award_points_for_message(author);

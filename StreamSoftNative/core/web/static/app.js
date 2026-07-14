@@ -76,6 +76,50 @@ function addEventAlert(evt) {
   setTimeout(() => el.remove(), 5200);
 }
 
+const gifQueue = [];
+let gifPlaying = false;
+
+function addGifAlert(evt) {
+  gifQueue.push(evt);
+  playNextGif();
+}
+
+function playNextGif() {
+  if (gifPlaying || gifQueue.length === 0 || !eventLayer) return;
+  const evt = gifQueue.shift();
+  gifPlaying = true;
+
+  const el = document.createElement("div");
+  el.className = "event-card";
+
+  if (evt.hasGif) {
+    const img = document.createElement("img");
+    img.src = `/media/gif_${evt.name}.gif`;
+    img.onerror = () => img.remove();
+    el.appendChild(img);
+  }
+
+  if (evt.hasMp3) playEventSound("gif_" + evt.name);
+
+  const nick = document.createElement("div");
+  nick.className = "nickname";
+  nick.textContent = evt.user;
+  el.appendChild(nick);
+
+  eventLayer.appendChild(el);
+  currentGifEl = el;
+
+  setTimeout(() => {
+    if (currentGifEl === el) {
+      el.remove();
+      currentGifEl = null;
+      gifPlaying = false;
+      playNextGif();
+    }
+  }, 5200);
+}
+let currentGifEl = null;
+
 function renderPoll(poll) {
   if (!pollWidget) return;
 
@@ -109,6 +153,7 @@ function connect() {
     const data = JSON.parse(event.data);
     if (data.type === "chat") addChatBubble(data);
     else if (data.type === "event") addEventAlert(data);
+    else if (data.type === "gif_alert") addGifAlert(data);
     else if (data.type === "config") applyConfig(data);
     else if (data.type === "poll") renderPoll(data);
   };

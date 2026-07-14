@@ -19,6 +19,8 @@
 #include "auto_update.hpp"
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
+#include "faceit_client.hpp"
+#include "gif_store.hpp"
 #include "gpu_check.hpp"
 #include "moderation.hpp"
 #include "module_installer.hpp"
@@ -65,7 +67,12 @@ public:
         broadcast_raw(payload.dump());
     }
 
-    void award_points_for_message(const std::string& username) { points_.award_for_message(username); }
+    void award_points_for_message(const std::string& username) {
+        std::lock_guard<std::mutex> lock(runtime_mutex_);
+        points_.award_for_message(username, runtime_.points_per_message);
+    }
+
+    void set_faceit_client(faceit::FaceitClient* client) { faceit_ = client; }
 
     void set_broadcaster_name(const std::string& name) { broadcaster_name_ = name; }
 
@@ -82,6 +89,19 @@ public:
             return username + ", у тебя " + std::to_string(points_.balance(username)) + " баллов";
         }
 
+        if (lower == "!gifs" || lower == "!гифки") {
+            auto list = gifs_.all();
+            if (list.empty()) return username + ", гифок пока нет";
+            std::string out = "Гифки: ";
+            bool first = true;
+            for (const auto& item : list) {
+                if (!first) out += ", ";
+                first = false;
+                out += "!gif " + item.name + " (" + std::to_string(item.price) + ")";
+            }
+            return out;
+        }
+
         if (lower == "!help" || lower == "!помощь") {
             bool song_enabled;
             int cost;
@@ -94,6 +114,7 @@ public:
             if (song_enabled) {
                 help += " !song <ссылка YouTube/SoundCloud> — заказать музыку (" + std::to_string(cost) + " баллов).";
             }
+            if (!gifs_.all().empty()) help += " !gif <имя> — включить гифку за баллы, список — !gifs.";
             if (!twitch_client_id_.empty()) help += " !clip — вырезать клип последних секунд стрима.";
             return help;
         }
@@ -201,6 +222,47 @@ public:
                                : "Добавлено в очередь! Осталось баллов: " + std::to_string(points_.balance(username));
     }
 
+    std::optional<std::string> try_gif_request(const std::string& username, const std::string& text) {
+        static const std::string kPrefixEn = "!gif ";
+        static const std::string kPrefixRu = "!гиф ";  // "!гиф " — 8 bytes in UTF-8, not 5
+
+        std::string trimmed = trim(text);
+        std::string lower = trimmed;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);  // ASCII-only; leaves UTF-8 bytes intact
+
+        std::string prefix;
+        if (lower.rfind(kPrefixEn, 0) == 0) prefix = kPrefixEn;
+        else if (lower.rfind(kPrefixRu, 0) == 0)
+            prefix = kPrefixRu;
+        if (prefix.empty()) return std::nullopt;
+
+        std::string name = GifStore::normalize(trimmed.substr(prefix.size()));
+        auto entry = gifs_.find(name);
+        bool has_gif = gif_file_exists(name, "gif");
+        bool has_mp3 = gif_file_exists(name, "mp3");
+        if (!entry || (!has_gif && !has_mp3)) {
+            return username + ", такой гифки нет — список: !gifs";
+        }
+
+        bool is_broadcaster = !broadcaster_name_.empty() && iequals(username, broadcaster_name_);
+        if (!is_broadcaster && entry->price > 0 && !points_.spend(username, entry->price)) {
+            return "Недостаточно баллов (нужно " + std::to_string(entry->price) + ", у тебя " +
+                   std::to_string(points_.balance(username)) + ")";
+        }
+
+        crow::json::wvalue payload;
+        payload["type"] = "gif_alert";
+        payload["name"] = entry->name;
+        payload["hasGif"] = has_gif;
+        payload["hasMp3"] = has_mp3;
+        payload["user"] = username;
+        broadcast_raw(payload.dump());
+
+        return entry->price > 0
+                   ? "Запускаю \"" + entry->name + "\"! Осталось баллов: " + std::to_string(points_.balance(username))
+                   : "Запускаю \"" + entry->name + "\"!";
+    }
+
     void broadcast_now_playing() { broadcast_raw(now_playing_payload().dump()); }
 
     bool try_youtube_fallback() {
@@ -283,6 +345,26 @@ private:
         return false;
     }
 
+    // Crow's <string> route segments arrive percent-encoded but NOT
+    // auto-decoded (unlike query-string params) — without this, a gif name
+    // typed in Cyrillic on the GUI's upload/delete URL path ends up stored
+    // under its literal "%d0%b9"-style encoded form instead of matching the
+    // entry created via the (already-decoded) JSON POST /api/gifs body.
+    static std::string url_decode_segment(const std::string& s) {
+        std::string out;
+        out.reserve(s.size());
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '%' && i + 2 < s.size() && std::isxdigit(static_cast<unsigned char>(s[i + 1])) &&
+                std::isxdigit(static_cast<unsigned char>(s[i + 2]))) {
+                out.push_back(static_cast<char>(std::stoi(s.substr(i + 1, 2), nullptr, 16)));
+                i += 2;
+            } else {
+                out.push_back(s[i]);
+            }
+        }
+        return out;
+    }
+
     static bool is_safe_segment(const std::string& s) {
         return !s.empty() && s.find("..") == std::string::npos && s.find('/') == std::string::npos &&
                s.find('\\') == std::string::npos;
@@ -317,6 +399,17 @@ private:
         CROW_ROUTE(app_, "/nowplaying")
         ([this] { return serve_file(web_dir_, "nowplaying.html"); });
 
+        CROW_ROUTE(app_, "/faceit")
+        ([this] {
+            // OBS's embedded Chromium (CEF) caches the top-level page across
+            // the whole time the browser source is loaded — without this, a
+            // rebuilt faceit.html (new layout/theme logic) keeps running the
+            // OLD cached script until the source is manually reloaded.
+            auto res = serve_file(web_dir_, "faceit.html");
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
         CROW_ROUTE(app_, "/static/<string>")
         ([this](const std::string& filename) {
             if (!is_safe_segment(filename)) return crow::response(404);
@@ -339,6 +432,8 @@ private:
         setup_songqueue_routes();
         setup_obs_routes();
         setup_connections_routes();
+        setup_gifs_routes();
+        setup_faceit_routes();
         setup_test_routes();
         setup_ws_route();
     }
@@ -375,6 +470,13 @@ private:
                     c.social_telegram_channel_id = std::string(body["social_telegram_channel_id"].s());
                 if (body.has("social_telegram_enabled"))
                     c.social_telegram_enabled = body["social_telegram_enabled"].b();
+                if (body.has("faceit_nickname")) c.faceit_nickname = std::string(body["faceit_nickname"].s());
+                if (body.has("faceit_api_key")) c.faceit_api_key = std::string(body["faceit_api_key"].s());
+                if (body.has("faceit_enabled")) c.faceit_enabled = body["faceit_enabled"].b();
+                if (faceit_ && (body.has("faceit_nickname") || body.has("faceit_api_key") || body.has("faceit_enabled"))) {
+                    if (c.should_run_faceit()) faceit_->start(c.faceit_nickname, c.faceit_api_key);
+                    else faceit_->stop();
+                }
                 if (body.has("tts_enabled")) {
                     c.tts_enabled = body["tts_enabled"].b();
                     if (tts_) tts_->set_enabled(c.tts_enabled);
@@ -528,6 +630,10 @@ private:
                         runtime_.song_request_volume = std::max(0, std::min(100, v));
                         song_volume_touched = true;
                     }
+                    if (body.has("points_per_message")) {
+                        int v = static_cast<int>(body["points_per_message"].i());
+                        runtime_.points_per_message = std::max(0, v);
+                    }
 
                     runtime_.save();
                 }
@@ -581,6 +687,89 @@ private:
                 std::filesystem::remove(media_dir_ / (kind + "." + ext), ec);
                 return crow::response(R"({"ok": true})");
             });
+    }
+
+    bool gif_file_exists(const std::string& name, const char* ext) const {
+        return std::filesystem::exists(media_dir_ / ("gif_" + GifStore::normalize(name) + "." + ext));
+    }
+
+    void setup_gifs_routes() {
+        CROW_ROUTE(app_, "/api/gifs")
+            .methods(crow::HTTPMethod::Get)([this](const crow::request&) {
+                crow::json::wvalue resp;
+                std::vector<crow::json::wvalue> arr;
+                for (const auto& e : gifs_.all()) {
+                    crow::json::wvalue j;
+                    j["name"] = e.name;
+                    j["price"] = e.price;
+                    j["hasGif"] = gif_file_exists(e.name, "gif");
+                    j["hasMp3"] = gif_file_exists(e.name, "mp3");
+                    arr.push_back(std::move(j));
+                }
+                resp["gifs"] = std::move(arr);
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/gifs")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                if (!body || !body.has("name")) return crow::response(400, R"({"ok": false, "error": "bad json"})");
+                std::string name = std::string(body["name"].s());
+                int price = body.has("price") ? static_cast<int>(body["price"].i()) : 50;
+                gifs_.upsert(name, price);
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/gifs/<string>")
+            .methods(crow::HTTPMethod::Delete)([this](const std::string& raw_name) {
+                std::string name = url_decode_segment(raw_name);
+                std::error_code ec;
+                std::filesystem::remove(media_dir_ / ("gif_" + GifStore::normalize(name) + ".gif"), ec);
+                std::filesystem::remove(media_dir_ / ("gif_" + GifStore::normalize(name) + ".mp3"), ec);
+                gifs_.remove(name);
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/gifs/<string>/<string>")
+            .methods(crow::HTTPMethod::Delete)([this](const std::string& raw_name, const std::string& ext) {
+                std::string name = url_decode_segment(raw_name);
+                if (!is_safe_segment(name) || !is_known_ext(ext)) {
+                    return crow::response(400, R"({"ok": false, "error": "bad name/ext"})");
+                }
+                std::error_code ec;
+                std::filesystem::remove(media_dir_ / ("gif_" + GifStore::normalize(name) + "." + ext), ec);
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/gifs/<string>/<string>")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req, const std::string& raw_name, const std::string& ext) {
+                std::string name = url_decode_segment(raw_name);
+                if (!is_safe_segment(name) || !is_known_ext(ext)) {
+                    return crow::response(400, R"({"ok": false, "error": "bad name/ext"})");
+                }
+                if (req.body.empty()) return crow::response(400, R"({"ok": false, "error": "empty file"})");
+                if (!gifs_.find(name)) gifs_.upsert(name, 50);
+
+                std::ofstream f(media_dir_ / ("gif_" + GifStore::normalize(name) + "." + ext),
+                                 std::ios::binary | std::ios::trunc);
+                f << req.body;
+                return crow::response(R"({"ok": true})");
+            });
+    }
+
+    void setup_faceit_routes() {
+        CROW_ROUTE(app_, "/api/faceit/snapshot")
+        ([this] {
+            crow::json::wvalue resp = faceit_ ? faceit_->snapshot_json() : crow::json::wvalue();
+            if (!faceit_) resp["valid"] = false;
+            crow::response res(resp.dump());
+            // OBS's Chromium (CEF) browser source can cache GET responses
+            // across the widget's whole lifetime — without this, stat/ELO
+            // changes never show up even though the widget re-fetches this
+            // endpoint every 20s.
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
     }
 
     void setup_commands_routes() {
@@ -1042,6 +1231,8 @@ private:
         if (ext == ".png") return "image/png";
         if (ext == ".gif") return "image/gif";
         if (ext == ".mp3") return "audio/mpeg";
+        if (ext == ".mp4") return "video/mp4";
+        if (ext == ".webm") return "video/webm";
         return "application/octet-stream";
     }
 
@@ -1064,6 +1255,8 @@ private:
     PollState poll_;
     PointsStore points_;
     SongQueue song_queue_;
+    GifStore gifs_;
+    faceit::FaceitClient* faceit_ = nullptr;
     std::string broadcaster_name_;
     tts::TtsWorker* tts_ = nullptr;
     int rvc_port_ = 0;
