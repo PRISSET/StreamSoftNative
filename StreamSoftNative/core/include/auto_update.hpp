@@ -64,14 +64,18 @@ struct UpdateCheckResult {
 inline UpdateCheckResult check_for_update() {
     UpdateCheckResult result;
 
-    httplib::Client cli(kUpdateApiHost);
-    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
-    cli.enable_server_certificate_verification(true);
-    cli.set_connection_timeout(10);
+    auto cli = twitch::make_https_client(kUpdateApiHost);
 
     httplib::Headers headers{{"User-Agent", "StreamSoft-Native"}, {"Accept", "application/vnd.github+json"}};
     auto resp = cli.Get(kUpdateApiPath, headers);
-    if (!resp || resp->status != 200) return result;
+    if (!resp) {
+        CROW_LOG_WARNING << "Проверка обновлений не удалась: " << httplib::to_string(resp.error());
+        return result;
+    }
+    if (resp->status != 200) {
+        CROW_LOG_WARNING << "Проверка обновлений: GitHub ответил статусом " << resp->status;
+        return result;
+    }
 
     auto releases = crow::json::load(resp->body);
     if (!releases) return result;
@@ -115,14 +119,18 @@ struct ReleaseInfo {
 inline std::vector<ReleaseInfo> fetch_release_history() {
     std::vector<ReleaseInfo> result;
 
-    httplib::Client cli(kUpdateApiHost);
-    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
-    cli.enable_server_certificate_verification(true);
-    cli.set_connection_timeout(10);
+    auto cli = twitch::make_https_client(kUpdateApiHost);
 
     httplib::Headers headers{{"User-Agent", "StreamSoft-Native"}, {"Accept", "application/vnd.github+json"}};
     auto resp = cli.Get(kUpdateApiPath, headers);
-    if (!resp || resp->status != 200) return result;
+    if (!resp) {
+        CROW_LOG_WARNING << "Не удалось получить список релизов: " << httplib::to_string(resp.error());
+        return result;
+    }
+    if (resp->status != 200) {
+        CROW_LOG_WARNING << "Список релизов: GitHub ответил статусом " << resp->status;
+        return result;
+    }
 
     auto releases = crow::json::load(resp->body);
     if (!releases) return result;

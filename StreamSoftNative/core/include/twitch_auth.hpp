@@ -69,10 +69,21 @@ struct AuthRejected : std::runtime_error {
 
 inline void invalidate_cached_token() { std::remove(kTokenFile.c_str()); }
 
+// Builds an HTTPS client that trusts real certificates even when an
+// antivirus or corporate proxy re-signs TLS traffic (Kaspersky, ESET, etc.
+// all install their own root cert into Windows' trust store to inspect
+// HTTPS). cpp-httplib can validate against that real Windows store via
+// Schannel (CPPHTTPLIB_WINDOWS_AUTOMATIC_ROOT_CERTIFICATES_UPDATE), but only
+// if we don't pin our own CA bundle with set_ca_cert_path — pinning disables
+// that path and made verification fail (as "connection unavailable") on any
+// machine doing HTTPS inspection. Fall back to the bundled cacert.pem only
+// when built against an older cpp-httplib that lacks the Windows check.
 inline httplib::Client make_https_client(const std::string& host) {
     httplib::Client cli(host);
-    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
     cli.enable_server_certificate_verification(true);
+#ifndef CPPHTTPLIB_WINDOWS_AUTOMATIC_ROOT_CERTIFICATES_UPDATE
+    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
+#endif
     cli.set_connection_timeout(10);
     return cli;
 }

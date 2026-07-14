@@ -19,8 +19,10 @@ namespace streamsoft::telegram {
 
 inline httplib::Client make_client() {
     httplib::Client cli("https://api.telegram.org");
-    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
     cli.enable_server_certificate_verification(true);
+#ifndef CPPHTTPLIB_WINDOWS_AUTOMATIC_ROOT_CERTIFICATES_UPDATE
+    cli.set_ca_cert_path(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH).c_str());
+#endif
     cli.set_connection_timeout(10);
     return cli;
 }

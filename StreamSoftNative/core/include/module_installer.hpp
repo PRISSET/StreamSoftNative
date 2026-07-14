@@ -200,8 +200,12 @@ inline bool download_file(const std::string& url, const std::filesystem::path& d
         });
     out.close();
 
-    if (!result || result->status != 200) {
-        error = "Скачивание не удалось: " + url;
+    if (!result) {
+        error = "Скачивание не удалось (" + std::string(httplib::to_string(result.error())) + "): " + url;
+        return false;
+    }
+    if (result->status != 200) {
+        error = "Скачивание не удалось (сервер ответил " + std::to_string(result->status) + "): " + url;
         return false;
     }
     return true;
@@ -589,7 +593,23 @@ inline bool install_module_async(const ModuleManifest& manifest) {
             return false;
         }
     }
-    std::thread(run_module_install, manifest).detach();
+    std::thread([manifest] {
+        try {
+            run_module_install(manifest);
+        } catch (const std::exception& e) {
+            auto& p = module_progress(manifest.name);
+            std::lock_guard<std::mutex> lock(p.mutex);
+            p.state = ModuleInstallState::Failed;
+            p.error = std::string("Внутренняя ошибка установки: ") + e.what();
+            CROW_LOG_ERROR << "Установка модуля " << manifest.name << " упала с исключением: " << e.what();
+        } catch (...) {
+            auto& p = module_progress(manifest.name);
+            std::lock_guard<std::mutex> lock(p.mutex);
+            p.state = ModuleInstallState::Failed;
+            p.error = "Внутренняя ошибка установки (неизвестное исключение)";
+            CROW_LOG_ERROR << "Установка модуля " << manifest.name << " упала с неизвестным исключением";
+        }
+    }).detach();
     return true;
 }
 
