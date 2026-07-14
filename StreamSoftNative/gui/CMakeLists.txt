@@ -85,6 +85,7 @@ target_link_libraries(streamsoft_gui PRIVATE
     nlohmann_json::nlohmann_json
     winmm
     dxgi
+    crypt32
 )
 
 if(WIN32)
@@ -100,7 +101,7 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
     STREAMSOFT_YTDLP_PATH="${STREAMSOFT_YTDLP_PATH}"
-    STREAMSOFT_VERSION="1.0.6"
+    STREAMSOFT_VERSION="1.0.7"
     QT_NO_KEYWORDS
 )
 

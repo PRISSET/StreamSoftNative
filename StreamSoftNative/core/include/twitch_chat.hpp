@@ -20,9 +20,50 @@
 #include "outgoing_queue.hpp"
 #include "twitch_auth.hpp"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <wincrypt.h>
+#include <openssl/x509.h>
+#endif
+
 namespace streamsoft::twitch {
 
 using ChatCallback = std::function<void(const std::string& author, const std::string& text)>;
+
+#ifdef _WIN32
+// Antivirus/corporate proxies that inspect HTTPS install their own root
+// certificate into Windows' trust store, not into our bundled Mozilla CA
+// bundle — cpp-httplib clients handle this automatically via Schannel (see
+// make_https_client in twitch_auth.hpp), but raw asio::ssl (OpenSSL) has no
+// equivalent "trust the OS store" switch, so pull the Windows ROOT store in
+// by hand. Without this, IRC (and therefore chat/TTS) silently never
+// connects on exactly those machines, while everything running through
+// httplib still works — which is what made this easy to miss the first
+// time around. Best-effort: a handful of unreadable certs in the store
+// shouldn't abort the whole load.
+inline void load_windows_root_certs(asio::ssl::context& ctx) {
+    HCERTSTORE store = CertOpenSystemStoreW(0, L"ROOT");
+    if (!store) return;
+
+    X509_STORE* x509_store = SSL_CTX_get_cert_store(ctx.native_handle());
+    PCCERT_CONTEXT cert_ctx = nullptr;
+    while ((cert_ctx = CertEnumCertificatesInStore(store, cert_ctx)) != nullptr) {
+        const unsigned char* encoded = cert_ctx->pbCertEncoded;
+        X509* x509 = d2i_X509(nullptr, &encoded, cert_ctx->cbCertEncoded);
+        if (x509) {
+            X509_STORE_add_cert(x509_store, x509);
+            X509_free(x509);
+        }
+    }
+    CertCloseStore(store, 0);
+}
+#endif
 
 inline void connect_and_listen(const std::string& channel, const std::string& nick,
                                 const std::string& access_token, const ChatCallback& on_message,
@@ -30,6 +71,9 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
     asio::io_context io;
     asio::ssl::context ssl_ctx(asio::ssl::context::tls_client);
     ssl_ctx.load_verify_file(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH));
+#ifdef _WIN32
+    load_windows_root_certs(ssl_ctx);
+#endif
 
     asio::ssl::stream<asio::ip::tcp::socket> stream(io, ssl_ctx);
     stream.set_verify_mode(asio::ssl::verify_peer);

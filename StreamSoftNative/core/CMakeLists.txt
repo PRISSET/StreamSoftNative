@@ -33,6 +33,7 @@ target_link_libraries(streamsoft_core PRIVATE
     nlohmann_json::nlohmann_json
     winmm
     dxgi
+    crypt32
 )
 
 target_compile_definitions(streamsoft_core PRIVATE
