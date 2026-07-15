@@ -454,7 +454,8 @@ private:
                 std::lock_guard<std::mutex> lock(connections_mutex_);
                 auto c = ConnectionsConfig::load();
                 if (body.has("twitch_client_id")) c.twitch_client_id = std::string(body["twitch_client_id"].s());
-                if (body.has("twitch_channel")) c.twitch_channel = std::string(body["twitch_channel"].s());
+                if (body.has("twitch_channel"))
+                    c.twitch_channel = normalize_twitch_channel(std::string(body["twitch_channel"].s()));
                 if (body.has("twitch_chat_enabled")) c.twitch_chat_enabled = body["twitch_chat_enabled"].b();
                 if (body.has("twitch_eventsub_enabled"))
                     c.twitch_eventsub_enabled = body["twitch_eventsub_enabled"].b();

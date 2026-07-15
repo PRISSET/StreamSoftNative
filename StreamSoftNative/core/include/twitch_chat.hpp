@@ -72,7 +72,12 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
     asio::ssl::context ssl_ctx(asio::ssl::context::tls_client);
     ssl_ctx.load_verify_file(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH));
 #ifdef _WIN32
-    load_windows_root_certs(ssl_ctx);
+    try {
+        load_windows_root_certs(ssl_ctx);
+    } catch (const std::exception& e) {
+        CROW_LOG_WARNING << "Twitch IRC: не удалось прочитать системное хранилище сертификатов Windows ("
+                          << e.what() << "), продолжаю только со встроенным списком";
+    }
 #endif
 
     asio::ssl::stream<asio::ip::tcp::socket> stream(io, ssl_ctx);
@@ -80,9 +85,17 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
     stream.set_verify_callback(asio::ssl::host_name_verification("irc.chat.twitch.tv"));
     SSL_set_tlsext_host_name(stream.native_handle(), "irc.chat.twitch.tv");
 
+    // Logged before each step (not just on failure) so a log capture from an
+    // affected machine shows exactly which one it never got past, instead
+    // of one opaque exception message from watch_twitch's top-level catch.
+    CROW_LOG_INFO << "Twitch IRC: резолвим irc.chat.twitch.tv...";
     asio::ip::tcp::resolver resolver(io);
     auto endpoints = resolver.resolve("irc.chat.twitch.tv", "6697");
+
+    CROW_LOG_INFO << "Twitch IRC: устанавливаем TCP-соединение...";
     asio::connect(stream.next_layer(), endpoints);
+
+    CROW_LOG_INFO << "Twitch IRC: TLS-хендшейк...";
     stream.handshake(asio::ssl::stream_base::client);
 
     std::mutex write_mutex;

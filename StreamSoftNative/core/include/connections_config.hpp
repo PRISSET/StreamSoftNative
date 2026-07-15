@@ -4,11 +4,41 @@
 
 #include <crow/json.h>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
 
 namespace streamsoft {
+
+// Twitch's Helix API rejects a login with a leading "@", surrounding
+// whitespace, or a pasted "twitch.tv/<name>" URL outright ("Bad
+// Identifiers") — normalize whatever the user typed instead of silently
+// failing every EventSub/user-id lookup with that channel.
+inline std::string normalize_twitch_channel(std::string s) {
+    auto not_space = [](unsigned char c) { return !std::isspace(c); };
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
+    s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
+
+    auto strip_prefix = [&](const std::string& prefix) {
+        if (s.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), s.begin(),
+                                                      [](char a, char b) { return ::tolower(a) == ::tolower(b); })) {
+            s.erase(0, prefix.size());
+        }
+    };
+    strip_prefix("https://www.twitch.tv/");
+    strip_prefix("https://twitch.tv/");
+    strip_prefix("www.twitch.tv/");
+    strip_prefix("twitch.tv/");
+    if (!s.empty() && s.front() == '@') s.erase(0, 1);
+
+    size_t slash = s.find('/');
+    if (slash != std::string::npos) s.erase(slash);
+
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
 
 struct ConnectionsConfig {
     std::string twitch_client_id;
@@ -72,6 +102,7 @@ struct ConnectionsConfig {
                 };
                 str("twitch_client_id", c.twitch_client_id);
                 str("twitch_channel", c.twitch_channel);
+                c.twitch_channel = normalize_twitch_channel(c.twitch_channel);
                 boolean("twitch_chat_enabled", c.twitch_chat_enabled);
                 boolean("twitch_eventsub_enabled", c.twitch_eventsub_enabled);
                 str("youtube_api_key", c.youtube_api_key);
@@ -96,7 +127,7 @@ struct ConnectionsConfig {
         ConnectionsConfig c;
         Config env = load_config();
         c.twitch_client_id = env.twitch_client_id;
-        c.twitch_channel = env.twitch_channel;
+        c.twitch_channel = normalize_twitch_channel(env.twitch_channel);
         c.twitch_eventsub_enabled = env.twitch_eventsub_enabled;
         c.youtube_api_key = env.youtube_api_key;
         c.youtube_video_id = env.youtube_video_id;
