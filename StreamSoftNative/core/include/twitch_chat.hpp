@@ -182,8 +182,11 @@ inline void watch_twitch(const std::string& channel, const std::string& client_i
                           OutgoingQueue* outgoing = nullptr) {
     while (true) {
         try {
+            CROW_LOG_INFO << "Twitch IRC: получаем токен доступа...";
             std::string access_token = get_access_token(client_id);
+            CROW_LOG_INFO << "Twitch IRC: получаем имя пользователя...";
             std::string nick = get_username(client_id, access_token);
+            CROW_LOG_INFO << "Twitch IRC: имя получено (" << nick << "), подключаемся к чату...";
             connect_and_listen(channel, nick, access_token, on_message, outgoing);
         } catch (const AuthRejected& e) {
             CROW_LOG_ERROR << "Twitch отклонил токен, сбрасываю кэш и повторю авторизацию через 15 секунд: "
