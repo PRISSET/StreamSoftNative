@@ -32,6 +32,7 @@
 #include "poll.hpp"
 #include "song_queue.hpp"
 #include "runtime_settings.hpp"
+#include "telegram.hpp"
 #include "tts_worker.hpp"
 #include "twitch_auth.hpp"
 #include "yt_resolve.hpp"
@@ -475,12 +476,29 @@ private:
                 if (body.has("faceit_nickname")) c.faceit_nickname = std::string(body["faceit_nickname"].s());
                 if (body.has("faceit_api_key")) c.faceit_api_key = std::string(body["faceit_api_key"].s());
                 if (body.has("faceit_enabled")) c.faceit_enabled = body["faceit_enabled"].b();
+                if (body.has("faceit_stats_telegram_enabled"))
+                    c.faceit_stats_telegram_enabled = body["faceit_stats_telegram_enabled"].b();
                 if (faceit_ && (body.has("faceit_nickname") || body.has("faceit_api_key") || body.has("faceit_enabled"))) {
                     if (c.should_run_faceit()) {
                         std::string api_key = c.faceit_api_key.empty() ? faceit::shared_api_key() : c.faceit_api_key;
                         faceit_->start(c.faceit_nickname, api_key);
                     } else {
                         faceit_->stop();
+                    }
+                }
+                if (faceit_ && (body.has("faceit_stats_telegram_enabled") || body.has("social_telegram_channel_id") ||
+                                 body.has("telegram_bot_token") || body.has("faceit_nickname") ||
+                                 body.has("faceit_enabled"))) {
+                    if (c.should_post_faceit_stats()) {
+                        std::string bot_token = c.telegram_bot_token;
+                        std::string channel_id = c.social_telegram_channel_id;
+                        faceit_->set_report_callback([bot_token, channel_id](const std::string&, const std::string& text) {
+                            std::thread([bot_token, channel_id, text] {
+                                telegram::send_message(bot_token, channel_id, text);
+                            }).detach();
+                        });
+                    } else {
+                        faceit_->set_report_callback(nullptr);
                     }
                 }
                 if (body.has("tts_enabled")) {

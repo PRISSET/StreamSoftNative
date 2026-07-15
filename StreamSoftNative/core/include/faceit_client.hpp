@@ -1,5 +1,6 @@
 #pragma once
 
+#include "faceit_stats.hpp"
 #include "twitch_auth.hpp"
 
 #include <crow/json.h>
@@ -10,6 +11,7 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -20,6 +22,8 @@
 namespace streamsoft::faceit {
 
 struct MatchResult {
+    std::string match_id;
+    long long finished_at = 0;
     bool win = false;
     std::string score;
     std::string map;
@@ -85,6 +89,28 @@ public:
     }
 
     ~FaceitClient() { stop(); }
+
+    void set_report_callback(std::function<void(const std::string& month, const std::string& text)> cb) {
+        stats_.set_report_callback(std::move(cb));
+    }
+
+    void mark_stream_start() {
+        int elo;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            elo = snapshot_.elo;
+        }
+        stats_.mark_stream_start(elo);
+    }
+
+    std::optional<StreamSummary> stream_end_summary() {
+        int elo;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            elo = snapshot_.elo;
+        }
+        return stats_.stream_end_summary(elo);
+    }
 
     crow::json::wvalue snapshot_json() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -338,6 +364,8 @@ private:
                     if (my_faction.empty()) continue;
 
                     MatchResult m;
+                    m.match_id = match_id;
+                    if (item.has("finished_at")) m.finished_at = static_cast<long long>(item["finished_at"].i());
                     m.win = (my_faction == winner);
                     if (results.has("score")) {
                         auto score = results["score"];
@@ -352,6 +380,24 @@ private:
                     snap.matches.push_back(std::move(m));
                 }
             }
+        }
+
+        if (snap.elo > 0) {
+            stats_.observe(snap.elo);
+            std::vector<MatchLogEntry> log_entries;
+            for (const auto& m : snap.matches) {
+                if (m.match_id.empty()) continue;
+                MatchLogEntry e;
+                e.match_id = m.match_id;
+                e.finished_at = m.finished_at;
+                e.win = m.win;
+                e.score = m.score;
+                e.map = m.map;
+                e.kills = m.kills;
+                e.deaths = m.deaths;
+                log_entries.push_back(std::move(e));
+            }
+            stats_.record_matches(log_entries);
         }
 
         snap.valid = true;
@@ -433,6 +479,7 @@ private:
     std::mutex mutex_;
     Snapshot snapshot_;
     std::vector<EloPoint> elo_history_;
+    FaceitStatsTracker stats_;
 };
 
 }

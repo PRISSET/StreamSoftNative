@@ -9,6 +9,8 @@ ColumnLayout {
     property bool loading: false
     property var snapshot: ({ valid: false })
 
+    property bool hasSocialTelegram: false
+
     function load() {
         loading = true
         api.get("/api/connections", function (ok, data) {
@@ -17,6 +19,9 @@ ColumnLayout {
             apiKeyField.text = data.faceit_api_key || ""
             ownKeyToggle.checked = !!(data.faceit_api_key && data.faceit_api_key.length > 0)
             enabledToggle.checked = !!data.faceit_enabled
+            statsToggle.checked = !!data.faceit_stats_telegram_enabled
+            hasSocialTelegram = !!(data.telegram_bot_token && data.telegram_bot_token.length > 0 &&
+                                    data.social_telegram_channel_id && data.social_telegram_channel_id.length > 0)
             loading = false
         })
     }
@@ -26,7 +31,8 @@ ColumnLayout {
         api.post("/api/connections", {
             faceit_nickname: nicknameField.text,
             faceit_api_key: ownKeyToggle.checked ? apiKeyField.text : "",
-            faceit_enabled: enabledToggle.checked
+            faceit_enabled: enabledToggle.checked,
+            faceit_stats_telegram_enabled: statsToggle.checked
         }, function (ok) {
             statusText.text = ok ? "Сохранено, обновление придёт в течение пары минут." : "Не удалось сохранить."
             statusTimer.restart()
@@ -104,6 +110,31 @@ ColumnLayout {
             placeholderText: "00000000-0000-0000-0000-000000000000"
             echoMode: TextInput.Password
             onEditingFinished: root.save()
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Статистика в Telegram"
+            subtitle: "После каждого стрима — сколько ELO поднял/слил за стрим, за день, за месяц, за год. Раз в месяц — вся история матчей за прошедший месяц."
+        }
+
+        GlassToggle {
+            id: statsToggle
+            text: "Публиковать статистику Faceit"
+            onToggled: root.save()
+        }
+
+        Text {
+            visible: !root.hasSocialTelegram
+            text: "Нужен настроенный Telegram-бот и канал — заполни их на странице «Соцсети» (тот же канал, куда публикуется старт стрима)."
+            color: Theme.bad
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
     }
 

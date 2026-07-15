@@ -88,6 +88,14 @@ inline void run_core() {
         std::string api_key = config.faceit_api_key.empty() ? faceit::shared_api_key() : config.faceit_api_key;
         faceit.start(config.faceit_nickname, api_key);
     }
+    if (config.should_post_faceit_stats()) {
+        std::string bot_token = config.telegram_bot_token;
+        std::string channel_id = config.social_telegram_channel_id;
+        faceit.set_report_callback([bot_token, channel_id](const std::string&, const std::string& text) {
+            std::thread([bot_token, channel_id, text] { telegram::send_message(bot_token, channel_id, text); })
+                .detach();
+        });
+    }
 
     std::mutex adapter_mutex;
 
@@ -189,13 +197,14 @@ inline void run_core() {
     }
 
     if (config.should_run_twitch_eventsub()) {
-        workers.emplace_back([&overlay, &tts, &config] {
-            supervise("twitch-eventsub", [&overlay, &tts, &config] {
+        workers.emplace_back([&overlay, &tts, &config, &faceit] {
+            supervise("twitch-eventsub", [&overlay, &tts, &config, &faceit] {
                 twitch::watch_twitch_events(
                     config.twitch_channel, config.twitch_client_id,
-                    [&overlay, &tts, &config](const std::string& kind, const std::string& user,
-                                               const std::string& detail) {
+                    [&overlay, &tts, &config, &faceit](const std::string& kind, const std::string& user,
+                                                        const std::string& detail) {
                         if (kind == "stream_online") {
+                            if (config.should_run_faceit()) faceit.mark_stream_start();
                             if (config.should_post_social_telegram()) {
                                 std::string bot_token = config.telegram_bot_token;
                                 std::string channel_id = config.social_telegram_channel_id;
@@ -203,6 +212,20 @@ inline void run_core() {
                                 std::thread([bot_token, channel_id, twitch_channel] {
                                     telegram::notify_stream_start(bot_token, channel_id, twitch_channel);
                                 }).detach();
+                            }
+                            return;
+                        }
+                        if (kind == "stream_offline") {
+                            if (config.should_post_faceit_stats()) {
+                                auto summary = faceit.stream_end_summary();
+                                if (summary) {
+                                    std::string bot_token = config.telegram_bot_token;
+                                    std::string channel_id = config.social_telegram_channel_id;
+                                    std::string text = faceit::format_stream_summary(*summary);
+                                    std::thread([bot_token, channel_id, text] {
+                                        telegram::send_message(bot_token, channel_id, text);
+                                    }).detach();
+                                }
                             }
                             return;
                         }

@@ -67,6 +67,12 @@ inline std::vector<SubscriptionSpec> subscription_specs() {
              c["broadcaster_user_id"] = bid;
              return c;
          }},
+        {"stream.offline", "1",
+         [](const std::string& bid) {
+             crow::json::wvalue c;
+             c["broadcaster_user_id"] = bid;
+             return c;
+         }},
     };
 }
 
@@ -117,6 +123,8 @@ inline void extract_event(const std::string& sub_type, const crow::json::rvalue&
         on_event("cheer", str_or("user_name", "Аноним"), std::to_string(bits) + " bits");
     } else if (sub_type == "stream.online") {
         on_event("stream_online", str_or("broadcaster_user_name", "???"), "");
+    } else if (sub_type == "stream.offline") {
+        on_event("stream_offline", str_or("broadcaster_user_name", "???"), "");
     } else {
         on_event(sub_type, str_or("user_name", "???"), "");
     }

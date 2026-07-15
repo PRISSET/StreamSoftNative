@@ -61,6 +61,7 @@ struct ConnectionsConfig {
     std::string faceit_nickname;
     std::string faceit_api_key;
     bool faceit_enabled = false;
+    bool faceit_stats_telegram_enabled = false;
 
     bool tts_enabled = true;
     int tts_max_chars = 200;
@@ -77,6 +78,12 @@ struct ConnectionsConfig {
     // — a user's own key is optional, only needed if the shared one ever
     // gets rate-limited.
     bool has_faceit() const { return !faceit_nickname.empty(); }
+    // Reuses the same Telegram channel/bot as "stream started" posts (see
+    // SocialPage) — a dedicated channel field would just duplicate config
+    // the user already filled in.
+    bool should_post_faceit_stats() const {
+        return faceit_stats_telegram_enabled && has_social_telegram() && has_faceit();
+    }
 
     bool should_run_twitch_chat() const { return twitch_chat_enabled && has_twitch(); }
     bool should_run_twitch_eventsub() const { return twitch_eventsub_enabled && has_twitch(); }
@@ -120,6 +127,7 @@ struct ConnectionsConfig {
                 str("faceit_nickname", c.faceit_nickname);
                 str("faceit_api_key", c.faceit_api_key);
                 boolean("faceit_enabled", c.faceit_enabled);
+                boolean("faceit_stats_telegram_enabled", c.faceit_stats_telegram_enabled);
                 boolean("tts_enabled", c.tts_enabled);
                 integer("tts_max_chars", c.tts_max_chars);
                 boolean("obs_connected", c.obs_connected);
@@ -161,6 +169,7 @@ struct ConnectionsConfig {
         j["faceit_nickname"] = faceit_nickname;
         j["faceit_api_key"] = faceit_api_key;
         j["faceit_enabled"] = faceit_enabled;
+        j["faceit_stats_telegram_enabled"] = faceit_stats_telegram_enabled;
         j["tts_enabled"] = tts_enabled;
         j["tts_max_chars"] = tts_max_chars;
         j["obs_connected"] = obs_connected;
