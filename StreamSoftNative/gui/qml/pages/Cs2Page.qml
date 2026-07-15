@@ -17,6 +17,7 @@ ColumnLayout {
         minSlider.value = settings.bet_min !== undefined ? settings.bet_min : 10
         maxSlider.value = settings.bet_max !== undefined ? settings.bet_max : 500
         multiplierSlider.value = settings.bet_payout_multiplier !== undefined ? settings.bet_payout_multiplier * 10 : 20
+        lockRoundSlider.value = settings.bet_lock_round !== undefined ? settings.bet_lock_round : 3
         loading = false
     }
 
@@ -26,7 +27,8 @@ ColumnLayout {
             bets_enabled: betsToggle.checked,
             bet_min: Math.round(minSlider.value),
             bet_max: Math.round(maxSlider.value),
-            bet_payout_multiplier: multiplierSlider.value / 10
+            bet_payout_multiplier: multiplierSlider.value / 10,
+            bet_lock_round: Math.round(lockRoundSlider.value)
         }, function () {})
     }
 
@@ -104,13 +106,25 @@ ColumnLayout {
         SectionHeader {
             Layout.fillWidth: true
             title: "Ставки зрителей"
-            subtitle: "С варм-апа и до начала 2-го раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. Дальше ставки закрываются, после матча бот сам считает и раздаёт баллы."
+            subtitle: "С варм-апа и до начала выбранного раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. После матча бот сверяется с Faceit: если это был подтверждённый матч Faceit — раздаёт баллы угадавшим, если нет (обычная игра, отменённая катка) — возвращает ставки всем."
         }
 
         GlassToggle {
             id: betsToggle
             text: "Включить ставки"
             onToggled: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Ставки принимаются до раунда"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: Math.round(lockRoundSlider.value) + ""; color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: lockRoundSlider
+            Layout.fillWidth: true
+            from: 1; to: 8; stepSize: 1
+            onMoved: root.save()
         }
 
         RowLayout {

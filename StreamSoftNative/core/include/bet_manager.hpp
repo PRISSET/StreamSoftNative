@@ -26,10 +26,17 @@ struct BetResolution {
 // the streamer's own points balance, not other viewers'.
 class BetManager {
 public:
-    void open_window() {
+    // Returns the new "generation" for this match window. Bet resolution can
+    // be delayed several minutes (waiting on Faceit API confirmation, see
+    // overlay_server.hpp) — if a new match starts in the meantime, the old
+    // resolution must not touch the new match's bets. Callers stash the
+    // generation from open_window()/generation() and pass it back into
+    // resolve()/void_all(), which no-op if a newer window has since opened.
+    int open_window() {
         std::lock_guard<std::mutex> lock(mutex_);
         bets_.clear();
         open_ = true;
+        return ++generation_;
     }
 
     void lock_window() {
@@ -40,6 +47,16 @@ public:
     bool is_open() {
         std::lock_guard<std::mutex> lock(mutex_);
         return open_;
+    }
+
+    int generation() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return generation_;
+    }
+
+    bool has_bets(int expected_generation) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return expected_generation == generation_ && !bets_.empty();
     }
 
     std::optional<std::string> place_bet(const std::string& username, const std::string& side, int amount,
@@ -65,10 +82,11 @@ public:
                (side == "win" ? std::string("победу") : std::string("поражение"));
     }
 
-    BetResolution resolve(bool player_won, PointsStore& points, double multiplier) {
+    BetResolution resolve(int expected_generation, bool player_won, PointsStore& points, double multiplier) {
         std::unordered_map<std::string, Bet> bets;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            if (expected_generation != generation_) return {};
             bets = std::move(bets_);
             bets_.clear();
             open_ = false;
@@ -89,9 +107,27 @@ public:
         return r;
     }
 
+    // Refunds every open stake and clears the window — used when a match
+    // can't be confirmed as a real Faceit match (wrong lobby type, cancelled
+    // match, GSI went stale without a clean end) so viewers aren't left
+    // short over something that was never actually resolved.
+    int void_all(int expected_generation, PointsStore& points) {
+        std::unordered_map<std::string, Bet> bets;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (expected_generation != generation_) return 0;
+            bets = std::move(bets_);
+            bets_.clear();
+            open_ = false;
+        }
+        for (const auto& [username, bet] : bets) points.add(username, bet.amount);
+        return static_cast<int>(bets.size());
+    }
+
 private:
     std::mutex mutex_;
     bool open_ = false;
+    int generation_ = 0;
     std::unordered_map<std::string, Bet> bets_;
 };
 

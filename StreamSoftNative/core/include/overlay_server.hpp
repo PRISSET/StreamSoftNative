@@ -49,6 +49,7 @@ public:
         std::filesystem::create_directories(media_dir_);
         wire_cs2_gsi();
         setup_routes();
+        start_cs2_stale_watch();
     }
 
     void run() {
@@ -79,19 +80,26 @@ public:
     }
 
     void wire_cs2_gsi() {
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            gsi_.set_lock_round(runtime_.bet_lock_round);
+        }
         gsi_.set_match_start_callback([this] {
+            match_start_epoch_ = current_epoch();
             bets_.open_window();
             bool enabled;
-            int bmin, bmax;
+            int bmin, bmax, lock_round;
             {
                 std::lock_guard<std::mutex> lock(runtime_mutex_);
                 enabled = runtime_.bets_enabled;
                 bmin = runtime_.bet_min;
                 bmax = runtime_.bet_max;
+                lock_round = runtime_.bet_lock_round;
             }
             if (enabled) {
                 push_outgoing("Матч начинается! Ставки открыты: !bet win <баллы> или !bet lose <баллы> (от " +
-                               std::to_string(bmin) + " до " + std::to_string(bmax) + ")");
+                               std::to_string(bmin) + " до " + std::to_string(bmax) + "), принимаются до раунда " +
+                               std::to_string(lock_round));
             }
             broadcast_raw(gsi_.snapshot_json().dump());
         });
@@ -99,31 +107,130 @@ public:
             bool was_open = bets_.is_open();
             bets_.lock_window();
             bool enabled;
+            int lock_round;
             {
                 std::lock_guard<std::mutex> lock(runtime_mutex_);
                 enabled = runtime_.bets_enabled;
+                lock_round = runtime_.bet_lock_round;
             }
-            if (enabled && was_open) push_outgoing("Раунд 2 начался — ставки закрыты. Удачи!");
+            if (enabled && was_open) {
+                push_outgoing("Раунд " + std::to_string(lock_round) + " начался — ставки закрыты. Удачи!");
+            }
             broadcast_raw(gsi_.snapshot_json().dump());
         });
         gsi_.set_match_end_callback([this](bool player_won) {
-            bool enabled;
-            double multiplier;
-            {
-                std::lock_guard<std::mutex> lock(runtime_mutex_);
-                enabled = runtime_.bets_enabled;
-                multiplier = runtime_.bet_payout_multiplier;
-            }
-            if (enabled) {
-                auto result = bets_.resolve(player_won, points_, multiplier);
-                if (result.winners + result.losers > 0) {
-                    push_outgoing(std::string(player_won ? "Победа! " : "Поражение. ") + "Ставки закрыты: угадавших " +
-                                  std::to_string(result.winners) + ", мимо — " + std::to_string(result.losers) +
-                                  ". Выплачено баллов: " + std::to_string(result.paid_out));
+            broadcast_raw(gsi_.snapshot_json().dump());
+            resolve_bets_after_match(bets_.generation(), player_won);
+        });
+        gsi_.set_match_abort_callback([this] {
+            broadcast_raw(gsi_.snapshot_json().dump());
+            void_bets_after_abort();
+        });
+    }
+
+    static long long current_epoch() {
+        return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    }
+
+    // GSI alone can't tell a real Faceit match apart from matchmaking/custom
+    // lobbies, and it has no idea whether a match was cancelled or someone
+    // never joined — the Faceit Data API (already polled in the background
+    // by FaceitClient for the ELO widget) is the actual source of truth for
+    // "did a Faceit match really finish, and who won". So instead of paying
+    // out the instant GSI reports gameover, wait for that poll loop to
+    // surface a matching finished match and resolve against ITS result; if
+    // nothing shows up within a few poll cycles, this wasn't a confirmed
+    // Faceit match and bets are refunded instead of guessed at.
+    void resolve_bets_after_match(int gen, bool gsi_win_hint) {
+        bool enabled;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.bets_enabled;
+        }
+        if (!enabled || !bets_.has_bets(gen)) return;
+
+        if (!faceit_ || !faceit_->is_running()) {
+            // No Faceit tracking running to confirm against — it's the only
+            // signal we have, fall back to GSI's own CT/T score comparison.
+            do_resolve_bets(gen, gsi_win_hint);
+            return;
+        }
+
+        long long since = match_start_epoch_;
+        std::thread([this, gen, since] {
+            auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(6);
+            while (std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(std::chrono::seconds(15));
+                if (auto m = faceit_->find_match_since(since)) {
+                    do_resolve_bets(gen, m->win);
+                    return;
                 }
             }
-            broadcast_raw(gsi_.snapshot_json().dump());
-        });
+            // Never showed up in Faceit's match history within the window —
+            // this wasn't actually a (finished) Faceit match. Refund rather
+            // than resolve on an unconfirmed guess.
+            void_bets_unconfirmed(gen);
+        }).detach();
+    }
+
+    void do_resolve_bets(int gen, bool player_won) {
+        bool enabled;
+        double multiplier;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.bets_enabled;
+            multiplier = runtime_.bet_payout_multiplier;
+        }
+        if (!enabled) return;
+        auto result = bets_.resolve(gen, player_won, points_, multiplier);
+        if (result.winners + result.losers > 0) {
+            push_outgoing(std::string(player_won ? "Победа! " : "Поражение. ") + "Ставки закрыты: угадавших " +
+                          std::to_string(result.winners) + ", мимо — " + std::to_string(result.losers) +
+                          ". Выплачено баллов: " + std::to_string(result.paid_out));
+        }
+    }
+
+    void void_bets_unconfirmed(int gen) {
+        auto count = bets_.void_all(gen, points_);
+        bool enabled;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.bets_enabled;
+        }
+        if (enabled && count > 0) {
+            push_outgoing("Не удалось подтвердить, что это был матч Faceit — ставки отменены, баллы возвращены (" +
+                          std::to_string(count) + ")");
+        }
+    }
+
+    void void_bets_after_abort() {
+        int gen = bets_.generation();
+        auto count = bets_.void_all(gen, points_);
+        bool enabled;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.bets_enabled;
+        }
+        if (enabled && count > 0) {
+            push_outgoing("Матч прервался без явного завершения — ставки отменены, баллы возвращены (" +
+                          std::to_string(count) + ")");
+        }
+    }
+
+    // GSI only pushes on change/heartbeat — this is the only place that
+    // periodically checks whether it went quiet mid-match (see
+    // GsiState::tick_staleness).
+    void start_cs2_stale_watch() {
+        std::thread([this] {
+            while (true) {
+                std::this_thread::sleep_for(std::chrono::seconds(20));
+                if (gsi_.tick_staleness(kGsiStaleTimeoutSeconds)) {
+                    broadcast_raw(gsi_.snapshot_json().dump());
+                    void_bets_after_abort();
+                }
+            }
+        }).detach();
     }
 
     std::optional<std::string> try_bet_request(const std::string& username, const std::string& text) {
@@ -205,7 +312,8 @@ public:
             {
                 std::lock_guard<std::mutex> lock(runtime_mutex_);
                 if (runtime_.bets_enabled) {
-                    help += " !bet win/lose <баллы> — ставка на текущий матч CS2 (до начала 2-го раунда).";
+                    help += " !bet win/lose <баллы> — ставка на текущий матч CS2 (до начала раунда " +
+                            std::to_string(runtime_.bet_lock_round) + ").";
                 }
             }
             return help;
@@ -423,6 +531,11 @@ public:
 
 private:
     static constexpr size_t kChatHistorySize = 30;
+    // A few multiples of the .cfg's "heartbeat" interval (30s, see
+    // steam_paths.hpp) — long enough to not false-positive on a brief hitch,
+    // short enough that the widget doesn't stay stuck "live" for long after
+    // the game actually stops reporting.
+    static constexpr int kGsiStaleTimeoutSeconds = 90;
     static constexpr std::array<const char*, 5> kEventKinds = {"follow", "subscribe", "gift_sub", "raid", "cheer"};
     static constexpr std::array<const char*, 2> kMediaExts = {"gif", "mp3"};
 
@@ -781,6 +894,11 @@ private:
                     if (body.has("bet_payout_multiplier")) {
                         double v = body["bet_payout_multiplier"].d();
                         runtime_.bet_payout_multiplier = std::max(1.0, std::min(10.0, v));
+                    }
+                    if (body.has("bet_lock_round")) {
+                        int v = static_cast<int>(body["bet_lock_round"].i());
+                        runtime_.bet_lock_round = std::max(1, std::min(12, v));
+                        gsi_.set_lock_round(runtime_.bet_lock_round);
                     }
 
                     runtime_.save();
@@ -1454,6 +1572,7 @@ private:
     faceit::FaceitClient* faceit_ = nullptr;
     cs2::GsiState gsi_;
     cs2::BetManager bets_;
+    long long match_start_epoch_ = 0;
     std::string broadcaster_name_;
     tts::TtsWorker* tts_ = nullptr;
     int rvc_port_ = 0;

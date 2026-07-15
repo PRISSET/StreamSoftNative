@@ -253,6 +253,31 @@
   #live-score .side { color: rgba(255, 255, 255, 0.4); }
   #live-score .side.mine { color: var(--accent); }
   #live-kda { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.75); flex-shrink: 0; }
+
+  /* Shown only while the betting window is actually open (see
+     GsiState::betting_open_) — separate from #live so it can disappear the
+     moment the configured round starts without touching the score/K-D-A
+     strip, which keeps showing for the rest of the match. */
+  #bet-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    padding: 8px 16px;
+    background: rgba(110, 231, 168, 0.12);
+    border: 1px solid rgba(110, 231, 168, 0.5);
+  }
+  #bet-banner.visible { display: flex; }
+  #bet-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6ee7a8;
+    flex-shrink: 0;
+    animation: live-pulse 1.4s ease-in-out infinite;
+  }
+  #bet-text { font-size: 13px; font-weight: 800; color: #6ee7a8; }
 </style>
 </head>
 <body>
@@ -291,6 +316,10 @@
     <div id="live-map"></div>
     <div id="live-score"><span class="side" id="live-ct">0</span>:<span class="side" id="live-t">0</span></div>
     <div id="live-kda"></div>
+  </div>
+  <div id="bet-banner">
+    <div id="bet-dot"></div>
+    <div id="bet-text"></div>
   </div>
   <div id="matches"></div>
 </div>
@@ -345,6 +374,15 @@
     document.getElementById("live-t").classList.toggle("mine", liveState.playerTeam === "T");
     document.getElementById("live-kda").textContent =
       `K/D/A ${liveState.kills || 0}/${liveState.deaths || 0}/${liveState.assists || 0}`;
+
+    const banner = document.getElementById("bet-banner");
+    if (liveState.bettingOpen) {
+      banner.classList.add("visible");
+      document.getElementById("bet-text").textContent =
+        "🎲 Ставки открыты: !bet win / !bet lose — принимаются до раунда " + (liveState.lockRound || "?");
+    } else {
+      banner.classList.remove("visible");
+    }
   }
 
   // The last-5-matches strip and the live-match strip share the same slot
@@ -359,6 +397,7 @@
       applyLiveStrip();
     } else {
       live.classList.remove("visible");
+      document.getElementById("bet-banner").classList.remove("visible");
       matches.style.display = "";
       renderMatchHistory(lastMatches);
     }

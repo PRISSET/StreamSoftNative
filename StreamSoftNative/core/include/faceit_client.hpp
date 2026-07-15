@@ -90,6 +90,25 @@ public:
 
     ~FaceitClient() { stop(); }
 
+    bool is_running() const { return running_; }
+
+    // Best-effort confirmation that a Faceit match actually finished around
+    // the time a GSI-observed match ended (see overlay_server.hpp's bet
+    // resolution flow) — just looks at whatever the background poll loop
+    // already fetched (refreshed every kPollSeconds), no extra API call.
+    // Picks the most recently finished match at or after since_epoch, since
+    // more than one could in principle finish inside the confirmation
+    // window.
+    std::optional<MatchResult> find_match_since(long long since_epoch) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const MatchResult* best = nullptr;
+        for (const auto& m : snapshot_.matches) {
+            if (m.finished_at >= since_epoch && (!best || m.finished_at > best->finished_at)) best = &m;
+        }
+        if (!best) return std::nullopt;
+        return *best;
+    }
+
     void set_report_callback(std::function<void(const std::string& month, const std::string& text)> cb) {
         stats_.set_report_callback(std::move(cb));
     }
