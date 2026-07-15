@@ -177,7 +177,7 @@ inline void launch_silent_update(const std::filesystem::path& installer_path) {
     if (ok) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
-        CROW_LOG_INFO << "Обновление запущено (" << installer_path.string() << "), приложение скоро перезапустится";
+        CROW_LOG_INFO << "Обновление запущено (" << path_to_utf8(installer_path) << "), приложение скоро перезапустится";
     } else {
         CROW_LOG_ERROR << "Не удалось запустить установщик обновления (код " << GetLastError() << ")";
     }

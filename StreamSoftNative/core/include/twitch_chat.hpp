@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <fstream>
 #include <functional>
 #include <istream>
 #include <mutex>
@@ -70,7 +71,24 @@ inline void connect_and_listen(const std::string& channel, const std::string& ni
                                 OutgoingQueue* outgoing) {
     asio::io_context io;
     asio::ssl::context ssl_ctx(asio::ssl::context::tls_client);
-    ssl_ctx.load_verify_file(resolve_resource_file("certs/cacert.pem", STREAMSOFT_CACERT_PATH));
+    {
+        // Deliberately not asio::ssl::context::load_verify_file(path) here —
+        // that hands OpenSSL a narrow path string it opens via the C
+        // runtime's ANSI-codepage-based fopen, which can either throw while
+        // building that string (see resolve_resource_file's comment) or,
+        // even once that's fixed, silently fail to find the file on a
+        // machine whose ANSI code page can't represent the path at all.
+        // Opening it ourselves via a native (wide, on Windows) path and
+        // handing OpenSSL the raw bytes sidesteps narrow-path resolution
+        // completely.
+        auto cert_path = resolve_resource_path("certs/cacert.pem", STREAMSOFT_CACERT_PATH);
+        std::ifstream cert_file(cert_path, std::ios::binary);
+        if (!cert_file) throw std::runtime_error("Не найден cacert.pem (" + path_to_utf8(cert_path) + ")");
+        std::ostringstream cert_ss;
+        cert_ss << cert_file.rdbuf();
+        std::string cert_pem = cert_ss.str();
+        ssl_ctx.add_certificate_authority(asio::buffer(cert_pem.data(), cert_pem.size()));
+    }
 #ifdef _WIN32
     try {
         load_windows_root_certs(ssl_ctx);

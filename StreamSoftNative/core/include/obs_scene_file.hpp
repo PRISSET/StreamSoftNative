@@ -1,5 +1,7 @@
 #pragma once
 
+#include "app_paths.hpp"
+
 #include <crow/logging.h>
 #include <nlohmann/json.hpp>
 
@@ -258,13 +260,13 @@ inline SceneFileResult ensure_browser_sources_via_file(int overlay_port) {
         std::ofstream out(scene_file, std::ios::binary | std::ios::trunc);
         out << root.dump(1, ' ');
     } catch (const std::exception& e) {
-        result.error = std::string("Не удалось сохранить файл сцены (бэкап цел: ") + backup_path.string() +
+        result.error = std::string("Не удалось сохранить файл сцены (бэкап цел: ") + streamsoft::path_to_utf8(backup_path) +
                         "): " + e.what();
         return result;
     }
 
     result.ok = true;
-    result.collection_name = get_str(root, "name", scene_file.stem().string());
+    result.collection_name = get_str(root, "name", streamsoft::path_to_utf8(scene_file.stem()));
     return result;
 }
 

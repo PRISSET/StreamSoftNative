@@ -184,7 +184,7 @@ inline bool download_file(const std::string& url, const std::filesystem::path& d
 
     std::ofstream out(dest, std::ios::binary | std::ios::trunc);
     if (!out) {
-        error = "Не удалось создать файл " + dest.string();
+        error = "Не удалось создать файл " + path_to_utf8(dest);
         return false;
     }
 
