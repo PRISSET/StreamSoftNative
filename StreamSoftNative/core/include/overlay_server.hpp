@@ -17,12 +17,14 @@
 #include <thread>
 
 #include "auto_update.hpp"
+#include "bet_manager.hpp"
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
 #include "faceit_client.hpp"
 #include "faceit_shared_key.hpp"
 #include "gif_store.hpp"
 #include "gpu_check.hpp"
+#include "gsi_state.hpp"
 #include "moderation.hpp"
 #include "module_installer.hpp"
 #include "obs_client.hpp"
@@ -32,6 +34,7 @@
 #include "poll.hpp"
 #include "song_queue.hpp"
 #include "runtime_settings.hpp"
+#include "steam_paths.hpp"
 #include "telegram.hpp"
 #include "tts_worker.hpp"
 #include "twitch_auth.hpp"
@@ -44,6 +47,7 @@ public:
     OverlayServer(int port, std::filesystem::path web_dir)
         : port_(port), web_dir_(std::move(web_dir)), media_dir_(web_dir_ / "media"), runtime_(RuntimeSettings::load()) {
         std::filesystem::create_directories(media_dir_);
+        wire_cs2_gsi();
         setup_routes();
     }
 
@@ -72,6 +76,86 @@ public:
     void award_points_for_message(const std::string& username) {
         std::lock_guard<std::mutex> lock(runtime_mutex_);
         points_.award_for_message(username, runtime_.points_per_message);
+    }
+
+    void wire_cs2_gsi() {
+        gsi_.set_match_start_callback([this] {
+            bets_.open_window();
+            bool enabled;
+            int bmin, bmax;
+            {
+                std::lock_guard<std::mutex> lock(runtime_mutex_);
+                enabled = runtime_.bets_enabled;
+                bmin = runtime_.bet_min;
+                bmax = runtime_.bet_max;
+            }
+            if (enabled) {
+                push_outgoing("Матч начинается! Ставки открыты: !bet win <баллы> или !bet lose <баллы> (от " +
+                               std::to_string(bmin) + " до " + std::to_string(bmax) + ")");
+            }
+            broadcast_raw(gsi_.snapshot_json().dump());
+        });
+        gsi_.set_match_lock_callback([this] {
+            bool was_open = bets_.is_open();
+            bets_.lock_window();
+            bool enabled;
+            {
+                std::lock_guard<std::mutex> lock(runtime_mutex_);
+                enabled = runtime_.bets_enabled;
+            }
+            if (enabled && was_open) push_outgoing("Раунд 1 начался — ставки закрыты. Удачи!");
+            broadcast_raw(gsi_.snapshot_json().dump());
+        });
+        gsi_.set_match_end_callback([this](bool player_won) {
+            bool enabled;
+            double multiplier;
+            {
+                std::lock_guard<std::mutex> lock(runtime_mutex_);
+                enabled = runtime_.bets_enabled;
+                multiplier = runtime_.bet_payout_multiplier;
+            }
+            if (enabled) {
+                auto result = bets_.resolve(player_won, points_, multiplier);
+                if (result.winners + result.losers > 0) {
+                    push_outgoing(std::string(player_won ? "Победа! " : "Поражение. ") + "Ставки закрыты: угадавших " +
+                                  std::to_string(result.winners) + ", мимо — " + std::to_string(result.losers) +
+                                  ". Выплачено баллов: " + std::to_string(result.paid_out));
+                }
+            }
+            broadcast_raw(gsi_.snapshot_json().dump());
+        });
+    }
+
+    std::optional<std::string> try_bet_request(const std::string& username, const std::string& text) {
+        static const std::string kPrefix = "!bet ";
+
+        std::string trimmed = trim(text);
+        std::string lower = trimmed;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+        if (lower.rfind(kPrefix, 0) != 0) return std::nullopt;
+
+        bool enabled;
+        int bmin, bmax;
+        {
+            std::lock_guard<std::mutex> lock(runtime_mutex_);
+            enabled = runtime_.bets_enabled;
+            bmin = runtime_.bet_min;
+            bmax = runtime_.bet_max;
+        }
+        if (!enabled) return std::nullopt;
+
+        std::string rest = trim(trimmed.substr(kPrefix.size()));
+        size_t sp = rest.find_first_of(" \t");
+        std::string side = sp == std::string::npos ? rest : rest.substr(0, sp);
+        std::transform(side.begin(), side.end(), side.begin(), ::tolower);
+        std::string amount_str = sp == std::string::npos ? "" : trim(rest.substr(sp + 1));
+
+        bool all_digits = !amount_str.empty() &&
+                           std::all_of(amount_str.begin(), amount_str.end(), [](unsigned char c) { return std::isdigit(c); });
+        if (!all_digits) return std::string("Использование: !bet win <баллы> или !bet lose <баллы>");
+
+        int amount = std::stoi(amount_str);
+        return bets_.place_bet(username, side, amount, points_, bmin, bmax);
     }
 
     void set_faceit_client(faceit::FaceitClient* client) { faceit_ = client; }
@@ -118,6 +202,12 @@ public:
             }
             if (!gifs_.all().empty()) help += " !gif <имя> — включить гифку за баллы, список — !gifs.";
             if (!twitch_client_id_.empty()) help += " !clip — вырезать клип последних секунд стрима.";
+            {
+                std::lock_guard<std::mutex> lock(runtime_mutex_);
+                if (runtime_.bets_enabled) {
+                    help += " !bet win/lose <баллы> — ставка на текущий матч CS2 (пока идёт варм-ап).";
+                }
+            }
             return help;
         }
 
@@ -412,6 +502,13 @@ private:
             return res;
         });
 
+        CROW_ROUTE(app_, "/cs2hud")
+        ([this] {
+            auto res = serve_file(web_dir_, "cs2hud.html");
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
         CROW_ROUTE(app_, "/static/<string>")
         ([this](const std::string& filename) {
             if (!is_safe_segment(filename)) return crow::response(404);
@@ -436,6 +533,7 @@ private:
         setup_connections_routes();
         setup_gifs_routes();
         setup_faceit_routes();
+        setup_cs2_routes();
         setup_test_routes();
         setup_ws_route();
     }
@@ -684,6 +782,15 @@ private:
                         runtime_.points_per_message = std::max(0, v);
                     }
 
+                    if (body.has("cs2_hud_enabled")) runtime_.cs2_hud_enabled = body["cs2_hud_enabled"].b();
+                    if (body.has("bets_enabled")) runtime_.bets_enabled = body["bets_enabled"].b();
+                    if (body.has("bet_min")) runtime_.bet_min = std::max(1, static_cast<int>(body["bet_min"].i()));
+                    if (body.has("bet_max")) runtime_.bet_max = std::max(runtime_.bet_min, static_cast<int>(body["bet_max"].i()));
+                    if (body.has("bet_payout_multiplier")) {
+                        double v = body["bet_payout_multiplier"].d();
+                        runtime_.bet_payout_multiplier = std::max(1.0, std::min(10.0, v));
+                    }
+
                     runtime_.save();
                 }
 
@@ -819,6 +926,48 @@ private:
             res.set_header("Cache-Control", "no-store");
             return res;
         });
+    }
+
+    void setup_cs2_routes() {
+        CROW_ROUTE(app_, "/gsi")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                if (!body) return crow::response(400);
+
+                std::string expected_token;
+                {
+                    std::lock_guard<std::mutex> lock(runtime_mutex_);
+                    expected_token = runtime_.gsi_token;
+                }
+                std::string got_token =
+                    (body.has("auth") && body["auth"].has("token")) ? std::string(body["auth"]["token"].s()) : "";
+                if (expected_token.empty() || got_token != expected_token) return crow::response(403);
+
+                if (gsi_.update(body)) broadcast_raw(gsi_.snapshot_json().dump());
+                return crow::response(200);
+            });
+
+        CROW_ROUTE(app_, "/api/cs2/snapshot")
+        ([this] {
+            crow::response res(gsi_.snapshot_json().dump());
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
+        CROW_ROUTE(app_, "/api/cs2/install-cfg")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
+                std::string token;
+                {
+                    std::lock_guard<std::mutex> lock(runtime_mutex_);
+                    token = runtime_.gsi_token;
+                }
+                auto result = cs2::install_gsi_cfg(token, port_);
+                crow::json::wvalue resp;
+                resp["ok"] = result.ok;
+                resp["error"] = result.error;
+                resp["path"] = result.path;
+                return crow::response(resp.dump());
+            });
     }
 
     void setup_commands_routes() {
@@ -1216,6 +1365,7 @@ private:
                 conn.send_text(poll_payload.dump());
 
                 conn.send_text(now_playing_payload().dump());
+                conn.send_text(gsi_.snapshot_json().dump());
 
                 std::lock_guard<std::mutex> lock(history_mutex_);
                 for (const auto& msg : chat_history_) {
@@ -1310,6 +1460,8 @@ private:
     SongQueue song_queue_;
     GifStore gifs_;
     faceit::FaceitClient* faceit_ = nullptr;
+    cs2::GsiState gsi_;
+    cs2::BetManager bets_;
     std::string broadcaster_name_;
     tts::TtsWorker* tts_ = nullptr;
     int rvc_port_ = 0;

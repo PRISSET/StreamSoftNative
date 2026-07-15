@@ -166,6 +166,12 @@ inline void run_core() {
                             return;
                         }
 
+                        auto bet_reply = overlay.try_bet_request(author, text);
+                        if (bet_reply) {
+                            twitch_outgoing.push(*bet_reply);
+                            return;
+                        }
+
                         overlay.broadcast_chat("twitch", author, text);
                         overlay.award_points_for_message(author);
                         tts.say(author, text);
@@ -251,6 +257,7 @@ inline void run_core() {
                         if (overlay.try_builtin_command(author, text)) return;
                         if (overlay.try_song_request(author, text)) return;
                         if (overlay.try_gif_request(author, text)) return;
+                        if (overlay.try_bet_request(author, text)) return;
 
                         overlay.broadcast_chat("youtube", author, text);
                         overlay.award_points_for_message(author);

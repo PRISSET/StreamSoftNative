@@ -201,6 +201,7 @@ ApplicationWindow {
             voicePage.applySettings(data)
             mutedPage.applySettings(data)
             musicPage.applySettings(data)
+            cs2Page.applySettings(data)
         })
     }
 
@@ -318,6 +319,7 @@ ApplicationWindow {
                                 { text: "Гифки", icon: "gifs" },
                                 { text: "Соцсети", icon: "social" },
                                 { text: "Faceit", icon: "faceit" },
+                                { text: "CS2", icon: "cs2" },
                                 { text: "Замьюченные", icon: "muted" },
                                 { text: "Настройки", icon: "settings" },
                                 { text: "Обновления", icon: "updates" }
@@ -382,6 +384,7 @@ ApplicationWindow {
                 GifsPage { id: gifsPage; width: pageStack.width }
                 SocialPage { id: socialPage; width: pageStack.width }
                 FaceitPage { id: faceitPage; width: pageStack.width }
+                Cs2Page { id: cs2Page; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }

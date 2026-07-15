@@ -54,6 +54,8 @@ public:
     static constexpr int kNowPlayingHeight = 270;
     static constexpr int kFaceitWidth = 820;
     static constexpr int kFaceitHeight = 300;
+    static constexpr int kCs2HudWidth = 900;
+    static constexpr int kCs2HudHeight = 160;
 
     ~ObsClient() { ws_.stop(); }
 
@@ -141,6 +143,8 @@ public:
                    has_source("StreamSoft Now Playing"));
         ensure_one(scene_name, "StreamSoft Faceit", base + "/faceit", kFaceitWidth, kFaceitHeight,
                    has_source("StreamSoft Faceit"));
+        ensure_one(scene_name, "StreamSoft CS2 HUD", base + "/cs2hud", kCs2HudWidth, kCs2HudHeight,
+                   has_source("StreamSoft CS2 HUD"));
     }
 
 private:

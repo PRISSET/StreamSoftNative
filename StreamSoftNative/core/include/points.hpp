@@ -58,6 +58,13 @@ public:
         save_unlocked();
     }
 
+    void add(const std::string& username, int amount) {
+        if (amount == 0) return;
+        std::lock_guard<std::mutex> lock(mutex_);
+        balances_[username] += amount;
+        save_unlocked();
+    }
+
     int balance(const std::string& username) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = balances_.find(username);

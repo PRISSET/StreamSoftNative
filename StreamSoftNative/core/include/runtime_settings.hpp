@@ -3,10 +3,19 @@
 #include <crow/json.h>
 
 #include <fstream>
+#include <iomanip>
+#include <random>
 #include <sstream>
 #include <string>
 
 namespace streamsoft {
+
+inline std::string generate_gsi_token() {
+    std::random_device rd;
+    std::ostringstream ss;
+    for (int i = 0; i < 8; ++i) ss << std::hex << std::setw(4) << std::setfill('0') << (rd() & 0xFFFF);
+    return ss.str();
+}
 
 struct RuntimeSettings {
     std::string theme = "minimal";
@@ -33,42 +42,61 @@ struct RuntimeSettings {
     int song_request_volume = 80;
     int points_per_message = 1;
 
+    bool cs2_hud_enabled = false;
+    bool bets_enabled = false;
+    int bet_min = 10;
+    int bet_max = 500;
+    double bet_payout_multiplier = 2.0;
+    std::string gsi_token;
+
     static constexpr const char* kFile = "runtime_settings.json";
 
     static RuntimeSettings load() {
         RuntimeSettings s;
 
         std::ifstream f(kFile, std::ios::binary);
-        if (!f) return s;
+        if (f) {
+            std::ostringstream ss;
+            ss << f.rdbuf();
+            auto j = crow::json::load(ss.str());
+            if (j) {
+                if (j.has("theme")) s.theme = std::string(j["theme"].s());
+                if (j.has("tts_voice_ru")) s.tts_voice_ru = std::string(j["tts_voice_ru"].s());
+                if (j.has("tts_voice_en")) s.tts_voice_en = std::string(j["tts_voice_en"].s());
+                if (j.has("tts_rate")) s.tts_rate = std::string(j["tts_rate"].s());
+                if (j.has("tts_volume")) s.tts_volume = static_cast<int>(j["tts_volume"].i());
+                if (j.has("tts_say_author")) s.tts_say_author = j["tts_say_author"].b();
+                if (j.has("event_volume")) s.event_volume = static_cast<int>(j["event_volume"].i());
+                if (j.has("chat_scale")) s.chat_scale = j["chat_scale"].d();
+                if (j.has("alert_scale")) s.alert_scale = j["alert_scale"].d();
 
-        std::ostringstream ss;
-        ss << f.rdbuf();
-        auto j = crow::json::load(ss.str());
-        if (!j) return s;
+                if (j.has("rvc_enabled")) s.rvc_enabled = j["rvc_enabled"].b();
+                if (j.has("rvc_base_url")) s.rvc_base_url = std::string(j["rvc_base_url"].s());
+                if (j.has("rvc_model")) s.rvc_model = std::string(j["rvc_model"].s());
+                if (j.has("rvc_scope")) s.rvc_scope = std::string(j["rvc_scope"].s());
+                if (j.has("rvc_pitch")) s.rvc_pitch = static_cast<int>(j["rvc_pitch"].i());
+                if (j.has("rvc_index_rate")) s.rvc_index_rate = j["rvc_index_rate"].d();
+                if (j.has("rvc_protect")) s.rvc_protect = j["rvc_protect"].d();
+                if (j.has("rvc_f0method")) s.rvc_f0method = std::string(j["rvc_f0method"].s());
 
-        if (j.has("theme")) s.theme = std::string(j["theme"].s());
-        if (j.has("tts_voice_ru")) s.tts_voice_ru = std::string(j["tts_voice_ru"].s());
-        if (j.has("tts_voice_en")) s.tts_voice_en = std::string(j["tts_voice_en"].s());
-        if (j.has("tts_rate")) s.tts_rate = std::string(j["tts_rate"].s());
-        if (j.has("tts_volume")) s.tts_volume = static_cast<int>(j["tts_volume"].i());
-        if (j.has("tts_say_author")) s.tts_say_author = j["tts_say_author"].b();
-        if (j.has("event_volume")) s.event_volume = static_cast<int>(j["event_volume"].i());
-        if (j.has("chat_scale")) s.chat_scale = j["chat_scale"].d();
-        if (j.has("alert_scale")) s.alert_scale = j["alert_scale"].d();
+                if (j.has("song_requests_enabled")) s.song_requests_enabled = j["song_requests_enabled"].b();
+                if (j.has("song_request_cost")) s.song_request_cost = static_cast<int>(j["song_request_cost"].i());
+                if (j.has("song_request_volume")) s.song_request_volume = static_cast<int>(j["song_request_volume"].i());
+                if (j.has("points_per_message")) s.points_per_message = static_cast<int>(j["points_per_message"].i());
 
-        if (j.has("rvc_enabled")) s.rvc_enabled = j["rvc_enabled"].b();
-        if (j.has("rvc_base_url")) s.rvc_base_url = std::string(j["rvc_base_url"].s());
-        if (j.has("rvc_model")) s.rvc_model = std::string(j["rvc_model"].s());
-        if (j.has("rvc_scope")) s.rvc_scope = std::string(j["rvc_scope"].s());
-        if (j.has("rvc_pitch")) s.rvc_pitch = static_cast<int>(j["rvc_pitch"].i());
-        if (j.has("rvc_index_rate")) s.rvc_index_rate = j["rvc_index_rate"].d();
-        if (j.has("rvc_protect")) s.rvc_protect = j["rvc_protect"].d();
-        if (j.has("rvc_f0method")) s.rvc_f0method = std::string(j["rvc_f0method"].s());
+                if (j.has("cs2_hud_enabled")) s.cs2_hud_enabled = j["cs2_hud_enabled"].b();
+                if (j.has("bets_enabled")) s.bets_enabled = j["bets_enabled"].b();
+                if (j.has("bet_min")) s.bet_min = static_cast<int>(j["bet_min"].i());
+                if (j.has("bet_max")) s.bet_max = static_cast<int>(j["bet_max"].i());
+                if (j.has("bet_payout_multiplier")) s.bet_payout_multiplier = j["bet_payout_multiplier"].d();
+                if (j.has("gsi_token")) s.gsi_token = std::string(j["gsi_token"].s());
+            }
+        }
 
-        if (j.has("song_requests_enabled")) s.song_requests_enabled = j["song_requests_enabled"].b();
-        if (j.has("song_request_cost")) s.song_request_cost = static_cast<int>(j["song_request_cost"].i());
-        if (j.has("song_request_volume")) s.song_request_volume = static_cast<int>(j["song_request_volume"].i());
-        if (j.has("points_per_message")) s.points_per_message = static_cast<int>(j["points_per_message"].i());
+        if (s.gsi_token.empty()) {
+            s.gsi_token = generate_gsi_token();
+            s.save();
+        }
 
         return s;
     }
@@ -98,6 +126,13 @@ struct RuntimeSettings {
         j["song_request_cost"] = song_request_cost;
         j["song_request_volume"] = song_request_volume;
         j["points_per_message"] = points_per_message;
+
+        j["cs2_hud_enabled"] = cs2_hud_enabled;
+        j["bets_enabled"] = bets_enabled;
+        j["bet_min"] = bet_min;
+        j["bet_max"] = bet_max;
+        j["bet_payout_multiplier"] = bet_payout_multiplier;
+        j["gsi_token"] = gsi_token;
         return j;
     }
 
