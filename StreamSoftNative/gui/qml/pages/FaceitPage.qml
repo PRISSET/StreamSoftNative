@@ -15,6 +15,7 @@ ColumnLayout {
             if (!ok) { loading = false; return }
             nicknameField.text = data.faceit_nickname || ""
             apiKeyField.text = data.faceit_api_key || ""
+            ownKeyToggle.checked = !!(data.faceit_api_key && data.faceit_api_key.length > 0)
             enabledToggle.checked = !!data.faceit_enabled
             loading = false
         })
@@ -24,7 +25,7 @@ ColumnLayout {
         if (loading) return
         api.post("/api/connections", {
             faceit_nickname: nicknameField.text,
-            faceit_api_key: apiKeyField.text,
+            faceit_api_key: ownKeyToggle.checked ? apiKeyField.text : "",
             faceit_enabled: enabledToggle.checked
         }, function (ok) {
             statusText.text = ok ? "Сохранено, обновление придёт в течение пары минут." : "Не удалось сохранить."
@@ -56,29 +57,6 @@ ColumnLayout {
     GlassCard {
         Layout.fillWidth: true
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            LinkChip { text: "Получить API-ключ →"; url: "https://developers.faceit.com/apps" }
-            Item { Layout.fillWidth: true }
-            PillButton {
-                text: guide.visible ? "Скрыть инструкцию" : "Как настроить?"
-                implicitHeight: 30
-                onClicked: guide.visible = !guide.visible
-            }
-        }
-
-        ColumnLayout {
-            id: guide
-            Layout.fillWidth: true
-            visible: false
-            spacing: 6
-
-            Text { text: "1. Зарегистрируй приложение на developers.faceit.com (кнопка выше) и создай Server-side API-ключ — это бесплатно."; color: Theme.textDim; font.pixelSize: Theme.fontSm; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-            Text { text: "2. Впиши сюда свой никнейм на Faceit (как в профиле, регистр не важен) и вставь ключ."; color: Theme.textDim; font.pixelSize: Theme.fontSm; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-            Text { text: "3. Включи виджет — источник \"StreamSoft Faceit\" появится в OBS автоматически при следующем \"Подключить к OBS\" на странице «Оверлей»."; color: Theme.textDim; font.pixelSize: Theme.fontSm; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-        }
-
         Text { text: "Никнейм на Faceit"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         GlassTextField {
             id: nicknameField
@@ -86,17 +64,47 @@ ColumnLayout {
             placeholderText: "s1mple"
             onEditingFinished: root.save()
         }
+        Text {
+            text: "Больше ничего вводить не нужно — статистика подтягивается сразу, приложение пользуется общим ключом StreamSoft."
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
 
-        Text { text: "API-ключ (Server-side)"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        GlassToggle { id: enabledToggle; text: "Показывать виджет на оверлее"; onToggled: root.save() }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            GlassToggle {
+                id: ownKeyToggle
+                text: "Использовать свой API-ключ"
+                onToggled: root.save()
+            }
+            Item { Layout.fillWidth: true }
+            LinkChip { text: "Получить ключ →"; url: "https://developers.faceit.com/apps" }
+        }
+        Text {
+            text: "Нужно только если общий ключ StreamSoft упрётся в лимит запросов (маловероятно) — тогда зарегистрируй Server-side приложение на developers.faceit.com и вставь ключ сюда."
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+
         GlassTextField {
             id: apiKeyField
             Layout.fillWidth: true
+            visible: ownKeyToggle.checked
             placeholderText: "00000000-0000-0000-0000-000000000000"
             echoMode: TextInput.Password
             onEditingFinished: root.save()
         }
-
-        GlassToggle { id: enabledToggle; text: "Показывать виджет на оверлее"; onToggled: root.save() }
     }
 
     GlassCard {

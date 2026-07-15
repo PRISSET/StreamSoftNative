@@ -20,6 +20,7 @@
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
 #include "faceit_client.hpp"
+#include "faceit_shared_key.hpp"
 #include "gif_store.hpp"
 #include "gpu_check.hpp"
 #include "moderation.hpp"
@@ -475,8 +476,12 @@ private:
                 if (body.has("faceit_api_key")) c.faceit_api_key = std::string(body["faceit_api_key"].s());
                 if (body.has("faceit_enabled")) c.faceit_enabled = body["faceit_enabled"].b();
                 if (faceit_ && (body.has("faceit_nickname") || body.has("faceit_api_key") || body.has("faceit_enabled"))) {
-                    if (c.should_run_faceit()) faceit_->start(c.faceit_nickname, c.faceit_api_key);
-                    else faceit_->stop();
+                    if (c.should_run_faceit()) {
+                        std::string api_key = c.faceit_api_key.empty() ? faceit::shared_api_key() : c.faceit_api_key;
+                        faceit_->start(c.faceit_nickname, api_key);
+                    } else {
+                        faceit_->stop();
+                    }
                 }
                 if (body.has("tts_enabled")) {
                     c.tts_enabled = body["tts_enabled"].b();

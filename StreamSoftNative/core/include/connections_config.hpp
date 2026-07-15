@@ -73,7 +73,10 @@ struct ConnectionsConfig {
     bool has_youtube() const { return !youtube_api_key.empty() && !youtube_video_id.empty(); }
     bool has_telegram() const { return !telegram_bot_token.empty() && !telegram_chat_id.empty(); }
     bool has_social_telegram() const { return !telegram_bot_token.empty() && !social_telegram_channel_id.empty(); }
-    bool has_faceit() const { return !faceit_nickname.empty() && !faceit_api_key.empty(); }
+    // Faceit works out of the box on a shared API key (see faceit_shared_key.hpp)
+    // — a user's own key is optional, only needed if the shared one ever
+    // gets rate-limited.
+    bool has_faceit() const { return !faceit_nickname.empty(); }
 
     bool should_run_twitch_chat() const { return twitch_chat_enabled && has_twitch(); }
     bool should_run_twitch_eventsub() const { return twitch_eventsub_enabled && has_twitch(); }

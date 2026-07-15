@@ -5,6 +5,7 @@
 #include "connections_config.hpp"
 #include "discord_presence.hpp"
 #include "faceit_client.hpp"
+#include "faceit_shared_key.hpp"
 #include "file_logger.hpp"
 #include "outgoing_queue.hpp"
 #include "overlay_server.hpp"
@@ -83,7 +84,10 @@ inline void run_core() {
 
     faceit::FaceitClient faceit;
     overlay.set_faceit_client(&faceit);
-    if (config.should_run_faceit()) faceit.start(config.faceit_nickname, config.faceit_api_key);
+    if (config.should_run_faceit()) {
+        std::string api_key = config.faceit_api_key.empty() ? faceit::shared_api_key() : config.faceit_api_key;
+        faceit.start(config.faceit_nickname, api_key);
+    }
 
     std::mutex adapter_mutex;
 
