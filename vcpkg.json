@@ -1,0 +1,22 @@
+{
+  "name": "streamsoft-native",
+  "version": "0.1.0",
+  "dependencies": [
+    "crow",
+    "openssl",
+    {
+      "name": "cpp-httplib",
+      "features": [
+        "openssl"
+      ]
+    },
+    {
+      "name": "ixwebsocket",
+      "default-features": false,
+      "features": [
+        "openssl"
+      ]
+    },
+    "nlohmann-json"
+  ]
+}
