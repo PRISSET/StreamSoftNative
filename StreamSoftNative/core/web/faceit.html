@@ -49,6 +49,47 @@
     border-radius: 50%;
     background: radial-gradient(circle, var(--accent-dim), transparent 70%);
     pointer-events: none;
+    animation: glow-drift 13s ease-in-out infinite;
+  }
+  @keyframes glow-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+    50% { transform: translate(-36px, 26px) scale(1.2); opacity: 0.55; }
+  }
+
+  #particles {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  /* Slow-drifting dust/embers — the "wind" cue. Positions/timings are
+     randomized per-particle in JS (see spawnParticles) so they don't read
+     as a mechanical loop. */
+  .particle {
+    position: absolute;
+    bottom: 10px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    animation-name: particle-float;
+    animation-timing-function: ease-in;
+    animation-iteration-count: infinite;
+  }
+  @keyframes particle-float {
+    0% { transform: translate(0, 0); opacity: 0; }
+    12% { opacity: 0.55; }
+    85% { opacity: 0.15; }
+    100% { transform: translate(var(--drift-x, 24px), -180px); opacity: 0; }
+  }
+
+  #elo.flash { animation: elo-flash 0.9s ease-out; }
+  @keyframes elo-flash {
+    0% { text-shadow: 0 0 2px var(--accent), 0 0 28px var(--accent); }
+    100% { text-shadow: 0 0 22px var(--accent-dim); }
   }
 
   #top {
@@ -180,12 +221,45 @@
   .match.win .wl { color: #6ee7a8; }
   .match.loss .wl { color: #ff7882; }
   .match .kd { font-size: 11px; color: rgba(255, 255, 255, 0.55); line-height: 1.3; }
+
+  /* Fed by CS2's own Game State Integration (see gsi_state.hpp) — replaces
+     the last-5-matches row while a match is actually in progress, since
+     that history strip is meaningless mid-match (the current game isn't in
+     it yet). Deliberately just map/round/score/K-D-A, not health/armor —
+     that's already visible in the game itself, this is for the viewers. */
+  #live {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    padding: 10px 16px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+  }
+  #live.visible { display: flex; }
+  #live-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ff4d4d;
+    flex-shrink: 0;
+    animation: live-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+  #live-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ff4d4d; flex-shrink: 0; }
+  #live-map { font-size: 14px; font-weight: 700; color: rgba(255, 255, 255, 0.85); flex-shrink: 0; }
+  #live-score { font-size: 22px; font-weight: 800; display: flex; align-items: baseline; gap: 6px; margin-left: auto; }
+  #live-score .side { color: rgba(255, 255, 255, 0.4); }
+  #live-score .side.mine { color: var(--accent); }
+  #live-kda { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.75); flex-shrink: 0; }
 </style>
 </head>
 <body>
 
 <div id="card">
   <div id="glow"></div>
+  <div id="particles"></div>
   <div id="top">
     <div id="head">
       <img id="avatar" class="hidden" />
@@ -211,11 +285,84 @@
     <div id="stats"></div>
   </div>
 
+  <div id="live">
+    <div id="live-dot"></div>
+    <div id="live-label">Live</div>
+    <div id="live-map"></div>
+    <div id="live-score"><span class="side" id="live-ct">0</span>:<span class="side" id="live-t">0</span></div>
+    <div id="live-kda"></div>
+  </div>
   <div id="matches"></div>
 </div>
 
 <script>
   const KNOWN_MAPS = ["mirage", "dust2", "inferno", "nuke", "ancient", "anubis", "vertigo", "train", "overpass", "cache"];
+
+  // Random per-particle timing/position so the "wind" doesn't read as a
+  // mechanical loop — spawned once, then just keeps looping via CSS.
+  function spawnParticles() {
+    const container = document.getElementById("particles");
+    const count = 7;
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement("div");
+      p.className = "particle";
+      p.style.left = Math.round(Math.random() * 100) + "%";
+      p.style.setProperty("--drift-x", Math.round((Math.random() - 0.5) * 60) + "px");
+      const duration = 7 + Math.random() * 6;
+      p.style.animationDuration = duration.toFixed(1) + "s";
+      p.style.animationDelay = (-Math.random() * duration).toFixed(1) + "s";
+      container.appendChild(p);
+    }
+  }
+
+  // Pushed by core over the same /ws every overlay page connects to (see
+  // overlay_server.hpp's "cs2_live" broadcasts) — this is CS2's own Game
+  // State Integration, not a Faceit API poll, so it updates the instant the
+  // game reports a change instead of waiting for the next 20s /refresh.
+  let liveState = null;
+  let lastMatches = [];
+  let lastEloValue = null;
+  let ws;
+
+  function connectWs() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "cs2_live") {
+        liveState = data;
+        renderMatchesArea();
+      }
+    };
+    ws.onclose = () => setTimeout(connectWs, 2000);
+    ws.onerror = () => ws.close();
+  }
+
+  function applyLiveStrip() {
+    document.getElementById("live-map").textContent = liveState.map || "—";
+    document.getElementById("live-ct").textContent = liveState.ctScore || 0;
+    document.getElementById("live-t").textContent = liveState.tScore || 0;
+    document.getElementById("live-ct").classList.toggle("mine", liveState.playerTeam === "CT");
+    document.getElementById("live-t").classList.toggle("mine", liveState.playerTeam === "T");
+    document.getElementById("live-kda").textContent =
+      `K/D/A ${liveState.kills || 0}/${liveState.deaths || 0}/${liveState.assists || 0}`;
+  }
+
+  // The last-5-matches strip and the live-match strip share the same slot
+  // in the card (see #live/#matches CSS) — whichever is relevant right now
+  // is shown, never both, so the card doesn't grow taller mid-stream.
+  function renderMatchesArea() {
+    const live = document.getElementById("live");
+    const matches = document.getElementById("matches");
+    if (liveState && liveState.active) {
+      live.classList.add("visible");
+      matches.style.display = "none";
+      applyLiveStrip();
+    } else {
+      live.classList.remove("visible");
+      matches.style.display = "";
+      renderMatchHistory(lastMatches);
+    }
+  }
 
   function mapIconUrl(rawMap) {
     if (!rawMap) return null;
@@ -304,7 +451,14 @@
       }
       card.classList.add("visible");
       document.getElementById("nickname").textContent = data.nickname || "";
-      document.getElementById("elo").textContent = data.elo || "—";
+      const eloEl = document.getElementById("elo");
+      eloEl.textContent = data.elo || "—";
+      if (lastEloValue !== null && data.elo && data.elo !== lastEloValue) {
+        eloEl.classList.remove("flash");
+        void eloEl.offsetWidth; // restart the animation even if it's already mid-flash
+        eloEl.classList.add("flash");
+      }
+      if (data.elo) lastEloValue = data.elo;
       document.getElementById("skill").textContent = "LVL " + (data.skill_level || "?");
       applyEloToday(data);
 
@@ -330,48 +484,55 @@
         statsEl.appendChild(statTile(streakValue || 0, streakLabel));
       }
 
-      const matchesEl = document.getElementById("matches");
-      matchesEl.innerHTML = "";
-      // FACEIT's history API returns oldest-of-the-batch first — reverse so
-      // the most recent match reads leftmost, matching FACEIT's own site.
-      (data.matches || []).slice().reverse().forEach((m) => {
-        const d = document.createElement("div");
-        d.className = "match " + (m.win ? "win" : "loss");
-
-        const iconUrl = mapIconUrl(m.map);
-        if (iconUrl) {
-          const badge = document.createElement("img");
-          badge.className = "map-badge";
-          badge.src = iconUrl;
-          badge.title = m.map || "";
-          badge.onerror = () => badge.remove();
-          d.appendChild(badge);
-        }
-
-        const text = document.createElement("div");
-        text.className = "match-text";
-
-        const wl = document.createElement("div");
-        wl.className = "wl";
-        wl.textContent = m.win ? "Победа" : "Поражение";
-        text.appendChild(wl);
-
-        if (m.kills >= 0 && m.deaths >= 0) {
-          const kd = document.createElement("div");
-          kd.className = "kd";
-          kd.textContent = m.kills + "/" + m.deaths;
-          text.appendChild(kd);
-        }
-
-        d.appendChild(text);
-        matchesEl.appendChild(d);
-      });
+      lastMatches = data.matches || [];
+      renderMatchesArea();
     } catch (e) {
       // Overlay browser source with no core running yet — just keep the
       // widget hidden and retry on the next tick instead of throwing.
     }
   }
 
+  function renderMatchHistory(matches) {
+    const matchesEl = document.getElementById("matches");
+    matchesEl.innerHTML = "";
+    // FACEIT's history API returns oldest-of-the-batch first — reverse so
+    // the most recent match reads leftmost, matching FACEIT's own site.
+    matches.slice().reverse().forEach((m) => {
+      const d = document.createElement("div");
+      d.className = "match " + (m.win ? "win" : "loss");
+
+      const iconUrl = mapIconUrl(m.map);
+      if (iconUrl) {
+        const badge = document.createElement("img");
+        badge.className = "map-badge";
+        badge.src = iconUrl;
+        badge.title = m.map || "";
+        badge.onerror = () => badge.remove();
+        d.appendChild(badge);
+      }
+
+      const text = document.createElement("div");
+      text.className = "match-text";
+
+      const wl = document.createElement("div");
+      wl.className = "wl";
+      wl.textContent = m.win ? "Победа" : "Поражение";
+      text.appendChild(wl);
+
+      if (m.kills >= 0 && m.deaths >= 0) {
+        const kd = document.createElement("div");
+        kd.className = "kd";
+        kd.textContent = m.kills + "/" + m.deaths;
+        text.appendChild(kd);
+      }
+
+      d.appendChild(text);
+      matchesEl.appendChild(d);
+    });
+  }
+
+  spawnParticles();
+  connectWs();
   refresh();
   setInterval(refresh, 20000);
 </script>

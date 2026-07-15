@@ -103,7 +103,7 @@ public:
                 std::lock_guard<std::mutex> lock(runtime_mutex_);
                 enabled = runtime_.bets_enabled;
             }
-            if (enabled && was_open) push_outgoing("Раунд 1 начался — ставки закрыты. Удачи!");
+            if (enabled && was_open) push_outgoing("Раунд 2 начался — ставки закрыты. Удачи!");
             broadcast_raw(gsi_.snapshot_json().dump());
         });
         gsi_.set_match_end_callback([this](bool player_won) {
@@ -205,7 +205,7 @@ public:
             {
                 std::lock_guard<std::mutex> lock(runtime_mutex_);
                 if (runtime_.bets_enabled) {
-                    help += " !bet win/lose <баллы> — ставка на текущий матч CS2 (пока идёт варм-ап).";
+                    help += " !bet win/lose <баллы> — ставка на текущий матч CS2 (до начала 2-го раунда).";
                 }
             }
             return help;
@@ -502,13 +502,6 @@ private:
             return res;
         });
 
-        CROW_ROUTE(app_, "/cs2hud")
-        ([this] {
-            auto res = serve_file(web_dir_, "cs2hud.html");
-            res.set_header("Cache-Control", "no-store");
-            return res;
-        });
-
         CROW_ROUTE(app_, "/static/<string>")
         ([this](const std::string& filename) {
             if (!is_safe_segment(filename)) return crow::response(404);
@@ -782,7 +775,6 @@ private:
                         runtime_.points_per_message = std::max(0, v);
                     }
 
-                    if (body.has("cs2_hud_enabled")) runtime_.cs2_hud_enabled = body["cs2_hud_enabled"].b();
                     if (body.has("bets_enabled")) runtime_.bets_enabled = body["bets_enabled"].b();
                     if (body.has("bet_min")) runtime_.bet_min = std::max(1, static_cast<int>(body["bet_min"].i()));
                     if (body.has("bet_max")) runtime_.bet_max = std::max(runtime_.bet_min, static_cast<int>(body["bet_max"].i()));

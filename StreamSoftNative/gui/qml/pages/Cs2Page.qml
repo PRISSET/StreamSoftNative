@@ -13,7 +13,6 @@ ColumnLayout {
 
     function applySettings(settings) {
         loading = true
-        hudToggle.checked = !!settings.cs2_hud_enabled
         betsToggle.checked = !!settings.bets_enabled
         minSlider.value = settings.bet_min !== undefined ? settings.bet_min : 10
         maxSlider.value = settings.bet_max !== undefined ? settings.bet_max : 500
@@ -24,7 +23,6 @@ ColumnLayout {
     function save() {
         if (loading) return
         api.post("/api/settings", {
-            cs2_hud_enabled: hudToggle.checked,
             bets_enabled: betsToggle.checked,
             bet_min: Math.round(minSlider.value),
             bet_max: Math.round(maxSlider.value),
@@ -58,7 +56,7 @@ ColumnLayout {
     SectionHeader {
         Layout.fillWidth: true
         title: "CS2"
-        subtitle: "Живой HUD на оверлее и ставки зрителей на твой текущий матч — через официальную Game State Integration самой игры, без запросов к Faceit."
+        subtitle: "Ставки зрителей на твой текущий матч — через официальную Game State Integration самой игры. Live-счёт и K/D во время матча показываются прямо в карточке Faceit на оверлее."
     }
 
     GlassCard {
@@ -67,7 +65,7 @@ ColumnLayout {
         SectionHeader {
             Layout.fillWidth: true
             title: "Установка в CS2"
-            subtitle: "Разовая настройка: кладём небольшой .cfg-файл в папку CS2 — дальше игра сама присылает счёт и здоровье на оверлей, ничего запускать не нужно."
+            subtitle: "Разовая настройка: кладём небольшой .cfg-файл в папку CS2 — дальше игра сама присылает начало/конец матча и счёт, ничего запускать не нужно."
         }
 
         RowLayout {
@@ -88,22 +86,6 @@ ColumnLayout {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
-    }
-
-    GlassCard {
-        Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Live HUD"
-            subtitle: "Карта, счёт CT/T (твоя сторона подсвечена), здоровье/броня, K/D/A — прямо во время раунда."
-        }
-
-        GlassToggle {
-            id: hudToggle
-            text: "Показывать HUD на оверлее"
-            onToggled: root.save()
-        }
 
         Text {
             text: root.snapshot.active
@@ -122,7 +104,7 @@ ColumnLayout {
         SectionHeader {
             Layout.fillWidth: true
             title: "Ставки зрителей"
-            subtitle: "Пока идёт варм-ап перед матчем — зрители пишут !bet win <баллы> или !bet lose <баллы>. С началом 1-го раунда ставки закрываются, после матча бот сам считает и раздаёт баллы."
+            subtitle: "С варм-апа и до начала 2-го раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. Дальше ставки закрываются, после матча бот сам считает и раздаёт баллы."
         }
 
         GlassToggle {

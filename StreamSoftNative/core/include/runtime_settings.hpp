@@ -42,7 +42,6 @@ struct RuntimeSettings {
     int song_request_volume = 80;
     int points_per_message = 1;
 
-    bool cs2_hud_enabled = false;
     bool bets_enabled = false;
     int bet_min = 10;
     int bet_max = 500;
@@ -84,7 +83,6 @@ struct RuntimeSettings {
                 if (j.has("song_request_volume")) s.song_request_volume = static_cast<int>(j["song_request_volume"].i());
                 if (j.has("points_per_message")) s.points_per_message = static_cast<int>(j["points_per_message"].i());
 
-                if (j.has("cs2_hud_enabled")) s.cs2_hud_enabled = j["cs2_hud_enabled"].b();
                 if (j.has("bets_enabled")) s.bets_enabled = j["bets_enabled"].b();
                 if (j.has("bet_min")) s.bet_min = static_cast<int>(j["bet_min"].i());
                 if (j.has("bet_max")) s.bet_max = static_cast<int>(j["bet_max"].i());
@@ -127,7 +125,6 @@ struct RuntimeSettings {
         j["song_request_volume"] = song_request_volume;
         j["points_per_message"] = points_per_message;
 
-        j["cs2_hud_enabled"] = cs2_hud_enabled;
         j["bets_enabled"] = bets_enabled;
         j["bet_min"] = bet_min;
         j["bet_max"] = bet_max;

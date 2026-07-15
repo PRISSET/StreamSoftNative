@@ -29,10 +29,11 @@ struct MapState {
 
 // Parses CS2 Game State Integration payloads — POSTed locally by the game
 // client itself once the .cfg from steam_paths.hpp is installed — and
-// tracks match phase transitions to drive the live HUD overlay and the
-// viewer betting window. This is Valve's own real-time mechanism, not the
-// Faceit API, so latency is as low as the game itself allows and it works
-// for any match (matchmaking or Faceit), not just Faceit ones.
+// tracks match phase transitions to drive the "live now" section of the
+// Faceit overlay widget and the viewer betting window. This is Valve's own
+// real-time mechanism, not the Faceit API, so latency is as low as the game
+// itself allows and it works for any match (matchmaking or Faceit), not
+// just Faceit ones.
 class GsiState {
 public:
     void set_match_start_callback(std::function<void()> cb) { on_match_start_ = std::move(cb); }
@@ -87,10 +88,20 @@ public:
                 if (last_phase_.empty() || last_phase_ == "gameover") {
                     fire_start = on_match_start_;
                     bet_locked_this_match_ = false;
+                    rounds_seen_live_ = 0;
+                    last_seen_round_ = -1;
                     betting_open_ = true;
                 }
             } else if (phase == "live") {
-                if (last_phase_ == "warmup" && !bet_locked_this_match_) {
+                // Don't assume round numbering (0- vs 1-indexed) — just
+                // count distinct round values seen while live this match, so
+                // "lock at round 2" means "the second time the round number
+                // changes", regardless of what CS2 actually calls round one.
+                if (map_.round != last_seen_round_) {
+                    last_seen_round_ = map_.round;
+                    rounds_seen_live_++;
+                }
+                if (rounds_seen_live_ >= 2 && !bet_locked_this_match_) {
                     fire_lock = on_match_lock_;
                     bet_locked_this_match_ = true;
                     betting_open_ = false;
@@ -108,7 +119,7 @@ public:
     crow::json::wvalue snapshot_json() {
         std::lock_guard<std::mutex> lock(mutex_);
         crow::json::wvalue j;
-        j["type"] = "cs2_hud";
+        j["type"] = "cs2_live";
         j["active"] = !last_phase_.empty() && last_phase_ != "gameover";
         j["phase"] = last_phase_;
         j["map"] = map_.name;
@@ -133,6 +144,8 @@ private:
     std::string last_phase_;
     bool bet_locked_this_match_ = false;
     bool betting_open_ = false;
+    int rounds_seen_live_ = 0;
+    int last_seen_round_ = -1;
 
     std::function<void()> on_match_start_;
     std::function<void()> on_match_lock_;
