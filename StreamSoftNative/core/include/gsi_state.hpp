@@ -110,21 +110,28 @@ public:
                     if (last_phase_.empty() || last_phase_ == "gameover") {
                         fire_start = on_match_start_;
                         bet_locked_this_match_ = false;
-                        rounds_seen_live_ = 0;
-                        last_seen_round_ = -1;
                         betting_open_ = true;
+                        // A stale score from the previous match must not
+                        // leak into the new one — GSI doesn't always send
+                        // team_ct/team_t on the very first warmup payload,
+                        // so without this the lock check below could fire
+                        // instantly off the last match's final score.
+                        map_.ct_score = 0;
+                        map_.t_score = 0;
                     }
                 } else if (phase == "live") {
-                    // Don't assume round numbering (0- vs 1-indexed) — just
-                    // count distinct round values seen while live this
-                    // match, so "lock at round N" means "the Nth time the
-                    // round number changes", regardless of what CS2 calls
-                    // round one.
-                    if (map_.round != last_seen_round_) {
-                        last_seen_round_ = map_.round;
-                        rounds_seen_live_++;
-                    }
-                    if (rounds_seen_live_ >= lock_round_ && !bet_locked_this_match_) {
+                    // Lock off the actual score, not off "how many times
+                    // map.round changed" — the knife round and side-pick
+                    // don't move the score but do generate their own "live"
+                    // ticks with their own round value, which made the old
+                    // distinct-round-value counter reach the threshold way
+                    // before the configured number of real rounds had been
+                    // played. Total rounds decided (ct+t score) is immune to
+                    // that: it only moves when a round actually ends, so
+                    // "accepted until round N" reliably means "until
+                    // N-1 rounds have been won".
+                    int rounds_completed = map_.ct_score + map_.t_score;
+                    if (rounds_completed >= lock_round_ - 1 && !bet_locked_this_match_) {
                         fire_lock = on_match_lock_;
                         bet_locked_this_match_ = true;
                         betting_open_ = false;
@@ -161,8 +168,6 @@ public:
                 last_phase_.clear();
                 betting_open_ = false;
                 bet_locked_this_match_ = false;
-                rounds_seen_live_ = 0;
-                last_seen_round_ = -1;
                 changed = true;
             }
         }
@@ -214,8 +219,6 @@ private:
     std::string last_phase_;
     bool bet_locked_this_match_ = false;
     bool betting_open_ = false;
-    int rounds_seen_live_ = 0;
-    int last_seen_round_ = -1;
     int lock_round_ = 3;
     long long last_update_epoch_ = 0;
 
