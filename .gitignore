@@ -1,0 +1,54 @@
+# vcpkg сам инструмент и поставленные пакеты — не коммитим, ставится bootstrap-скриптом
+vcpkg/
+vcpkg_installed/
+
+# CMake / MSVC build output — не коммитим, пересобирается из исходников
+build/
+out/
+CMakeCache.txt
+CMakeFiles/
+*.vcxproj*
+*.sln
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Собранный инсталлятор (ISCC.exe installer\streamsoft.iss) — пересобирается
+# из build/gui/Release, не коммитим
+installer/Output/
+
+# Скачиваемые опциональные модули (embeddable Python + зависимости) — не часть кода
+adapters/*/vendor/
+adapters/*/python-embed/
+# RVC's live pip-install (module_installer.hpp) — embeddable Python + venv +
+# downloaded voice model, all fetched per-machine at install time, same idea
+# as vendor/ above just under a different name for the live-install path.
+adapters/*/venv/
+adapters/*/models/
+adapters/*/.streamsoft_installed
+
+# Временные скачивания module_installer.hpp (см. run_module_install) —
+# создаются рядом с adapters/<name>/, а не внутри неё, так и не удаляются
+# при неудачной установке
+adapters/*_download_tmp/
+
+# Секреты — никогда не коммитить
+.env
+twitch_token.json
+connections.json
+CLAUDE.md
+
+# Qt SDK (прекомпилированный, тянется aqtinstall) и временное venv для него —
+# см. docs/BUILD.md за командой установки
+qt/
+.aqt-venv/
+
+# core/tools/yt-dlp.exe тоже сюда попадает через *.exe выше — качается сам
+# при конфигурации CMake (см. core/CMakeLists.txt), не коммитим
+
+# Рантайм-данные (создаются программой при первом запуске)
+runtime_settings.json
+chat_commands.json
+points.json
+core/web/media/
