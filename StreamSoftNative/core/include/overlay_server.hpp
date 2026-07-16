@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "auto_update.hpp"
+#include "autostart.hpp"
 #include "bet_manager.hpp"
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
@@ -1076,6 +1077,24 @@ private:
                 resp["ok"] = result.ok;
                 resp["error"] = result.error;
                 resp["path"] = result.path;
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/autostart")
+            .methods(crow::HTTPMethod::Get)([](const crow::request&) {
+                crow::json::wvalue resp;
+                resp["enabled"] = autostart_is_enabled();
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/autostart")
+            .methods(crow::HTTPMethod::Post)([](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                bool want = body && body.has("enabled") && body["enabled"].b();
+                bool ok = autostart_set_enabled(want);
+                crow::json::wvalue resp;
+                resp["ok"] = ok;
+                resp["enabled"] = ok ? want : autostart_is_enabled();
                 return crow::response(resp.dump());
             });
     }

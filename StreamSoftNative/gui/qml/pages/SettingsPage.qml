@@ -11,12 +11,23 @@ ColumnLayout {
     spacing: 18
 
     readonly property var win: root.Window.window
+    property bool logsVisible: false
+    property bool logsLoaded: false
 
     function refreshLog() {
         api.get("/api/log?lines=300", function (ok, data) {
             logText.text = ok && data.text ? data.text : "Лог пока пуст или недоступен."
+            root.logsLoaded = true
         })
     }
+
+    function loadAutostart() {
+        api.get("/api/autostart", function (ok, data) {
+            autostartToggle.checked = !!(ok && data.enabled)
+        })
+    }
+
+    Component.onCompleted: loadAutostart()
 
     FileDialog {
         id: bgFileDialog
@@ -291,6 +302,26 @@ ColumnLayout {
 
         SectionHeader {
             Layout.fillWidth: true
+            title: "Автозапуск"
+            subtitle: "Запускать StreamSoft автоматически при входе в Windows."
+        }
+
+        GlassToggle {
+            id: autostartToggle
+            text: "Запускать при входе в Windows"
+            onToggled: {
+                api.post("/api/autostart", { enabled: checked }, function (ok, data) {
+                    if (ok && data) autostartToggle.checked = !!data.enabled
+                })
+            }
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
             title: "Логи"
             subtitle: "Последние строки streamsoft.log — полезно для диагностики, если что-то не подключается (Twitch, TTS и т.д.)."
         }
@@ -299,11 +330,20 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 10
             PillButton {
+                text: root.logsVisible ? "Скрыть логи" : "Показать логи"
+                onClicked: {
+                    root.logsVisible = !root.logsVisible
+                    if (root.logsVisible && !root.logsLoaded) root.refreshLog()
+                }
+            }
+            PillButton {
                 text: "Обновить"
+                visible: root.logsVisible
                 onClicked: root.refreshLog()
             }
             PillButton {
                 text: "Скопировать"
+                visible: root.logsVisible
                 onClicked: { logText.selectAll(); logText.copy(); logText.deselect() }
             }
             Item { Layout.fillWidth: true }
@@ -311,6 +351,7 @@ ColumnLayout {
 
         Rectangle {
             Layout.fillWidth: true
+            visible: root.logsVisible
             implicitHeight: 260
             radius: Theme.radiusMd
             color: Theme.fieldBg
@@ -334,8 +375,6 @@ ColumnLayout {
                 }
             }
         }
-
-        Component.onCompleted: root.refreshLog()
     }
 
     Item { Layout.fillHeight: true }

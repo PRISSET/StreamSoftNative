@@ -1,0 +1,52 @@
+#pragma once
+
+#include "app_paths.hpp"
+
+#include <windows.h>
+
+#include <string>
+
+namespace streamsoft {
+
+// Mirrors the HKCU Run-key entry the installer writes for the "Запускать
+// StreamSoft при входе в Windows" task (see [Registry] in streamsoft.iss) —
+// same key/value name, so toggling this at runtime and toggling the
+// installer task both agree on the same piece of state.
+inline const wchar_t* kAutostartRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+inline const wchar_t* kAutostartValueName = L"StreamSoft";
+
+inline bool autostart_is_enabled() {
+    HKEY key;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutostartRunKey, 0, KEY_READ, &key) != ERROR_SUCCESS) return false;
+    DWORD type = 0;
+    LSTATUS st = RegQueryValueExW(key, kAutostartValueName, nullptr, &type, nullptr, nullptr);
+    RegCloseKey(key);
+    return st == ERROR_SUCCESS && type == REG_SZ;
+}
+
+inline bool autostart_set_enabled(bool enabled) {
+    HKEY key;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kAutostartRunKey, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS) return false;
+
+    bool ok;
+    if (enabled) {
+        wchar_t buf[MAX_PATH];
+        DWORD len = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+        if (len == 0 || len >= MAX_PATH) {
+            RegCloseKey(key);
+            return false;
+        }
+        std::wstring quoted = L"\"" + std::wstring(buf, len) + L"\"";
+        LSTATUS st = RegSetValueExW(key, kAutostartValueName, 0, REG_SZ,
+                                     reinterpret_cast<const BYTE*>(quoted.c_str()),
+                                     static_cast<DWORD>((quoted.size() + 1) * sizeof(wchar_t)));
+        ok = st == ERROR_SUCCESS;
+    } else {
+        LSTATUS st = RegDeleteValueW(key, kAutostartValueName);
+        ok = st == ERROR_SUCCESS || st == ERROR_FILE_NOT_FOUND;
+    }
+    RegCloseKey(key);
+    return ok;
+}
+
+}
