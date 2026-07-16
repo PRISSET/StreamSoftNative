@@ -97,6 +97,10 @@ inline void run_core() {
         });
     }
 
+    dota::OpenDotaClient dota;
+    overlay.set_dota_client(&dota);
+    if (config.should_run_dota()) dota.start(config.dota_account_id);
+
     std::mutex adapter_mutex;
 
     set_module_installed_callback("tts", [&tts_process, &adapter_mutex, kTtsPort] {

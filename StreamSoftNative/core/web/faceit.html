@@ -92,7 +92,20 @@
     100% { text-shadow: 0 0 22px var(--accent-dim); }
   }
 
-  #top {
+  /* cs2-content and dota-content are two mutually-exclusive "identities"
+     for this same widget — see #cs2-content/.visible below — so most of
+     their inner chrome (head/avatar/nickname/pill/divider/stats/matches)
+     is shared via combined selectors instead of duplicated per game. */
+  #cs2-content, #dota-content {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+  }
+  #cs2-content.visible, #dota-content.visible { display: flex; }
+
+  #top, #dtop {
     display: flex;
     align-items: center;
     gap: 24px;
@@ -101,14 +114,14 @@
     position: relative;
   }
 
-  #head {
+  #head, #dhead {
     display: flex;
     align-items: center;
     gap: 14px;
     width: 190px;
     flex-shrink: 0;
   }
-  #avatar {
+  #avatar, #davatar {
     width: 68px;
     height: 68px;
     border-radius: 50%;
@@ -118,16 +131,16 @@
     box-sizing: border-box;
     flex-shrink: 0;
   }
-  #avatar.hidden { display: none; }
-  #head-text { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-  #nickname {
+  #avatar.hidden, #davatar.hidden { display: none; }
+  #head-text, #dhead-text { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  #nickname, #dnickname {
     font-size: 20px;
     font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  #skill {
+  #skill, #drank {
     align-self: flex-start;
     font-size: 13px;
     padding: 3px 10px;
@@ -137,7 +150,18 @@
     font-weight: 800;
   }
 
-  #divider { width: 1px; align-self: stretch; background: var(--card-border); flex-shrink: 0; }
+  #divider, #ddivider { width: 1px; align-self: stretch; background: var(--card-border); flex-shrink: 0; }
+
+  /* Dota's top row only has two columns (head + stats, no ELO/sparkline
+     equivalent) so its stats grid takes the rest of the row instead of a
+     fixed 230px third column like CS2's #stats. */
+  #dstats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
 
   #elo-section {
     display: flex;
@@ -191,7 +215,7 @@
   .stat-tile .v { font-size: 18px; font-weight: 800; }
   .stat-tile .l { font-size: 10px; color: rgba(255, 255, 255, 0.55); text-transform: uppercase; letter-spacing: 0.04em; }
 
-  #matches {
+  #matches, #dmatches {
     display: flex;
     gap: 10px;
     flex-shrink: 0;
@@ -285,42 +309,63 @@
 <div id="card">
   <div id="glow"></div>
   <div id="particles"></div>
-  <div id="top">
-    <div id="head">
-      <img id="avatar" class="hidden" />
-      <div id="head-text">
-        <div id="nickname"></div>
-        <div id="skill"></div>
+
+  <div id="cs2-content">
+    <div id="top">
+      <div id="head">
+        <img id="avatar" class="hidden" />
+        <div id="head-text">
+          <div id="nickname"></div>
+          <div id="skill"></div>
+        </div>
       </div>
+
+      <div id="divider"></div>
+
+      <div id="elo-section">
+        <div id="label">FACEIT · CS2</div>
+        <div id="elo-row">
+          <div id="elo"></div>
+          <div id="elo-today" class="hidden"></div>
+        </div>
+        <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+      </div>
+
+      <div id="divider2"></div>
+
+      <div id="stats"></div>
     </div>
 
-    <div id="divider"></div>
+    <div id="matches"></div>
+    <div id="live">
+      <div id="live-dot"></div>
+      <div id="live-label">Live</div>
+      <div id="live-map"></div>
+      <div id="live-score"><span class="side" id="live-ct">0</span>:<span class="side" id="live-t">0</span></div>
+      <div id="live-kda"></div>
+    </div>
+    <div id="bet-banner">
+      <div id="bet-dot"></div>
+      <div id="bet-text"></div>
+    </div>
+  </div>
 
-    <div id="elo-section">
-      <div id="label">FACEIT · CS2</div>
-      <div id="elo-row">
-        <div id="elo"></div>
-        <div id="elo-today" class="hidden"></div>
+  <div id="dota-content">
+    <div id="dtop">
+      <div id="dhead">
+        <img id="davatar" class="hidden" />
+        <div id="dhead-text">
+          <div id="dnickname"></div>
+          <div id="drank"></div>
+        </div>
       </div>
-      <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+
+      <div id="ddivider"></div>
+
+      <div id="dstats"></div>
     </div>
 
-    <div id="divider2"></div>
-
-    <div id="stats"></div>
-  </div>
-
-  <div id="matches"></div>
-  <div id="live">
-    <div id="live-dot"></div>
-    <div id="live-label">Live</div>
-    <div id="live-map"></div>
-    <div id="live-score"><span class="side" id="live-ct">0</span>:<span class="side" id="live-t">0</span></div>
-    <div id="live-kda"></div>
-  </div>
-  <div id="bet-banner">
-    <div id="bet-dot"></div>
-    <div id="bet-text"></div>
+    <div id="dmatches"></div>
   </div>
 </div>
 
@@ -353,6 +398,15 @@
   let lastEloValue = null;
   let ws;
 
+  // Which of the two identities this shared OBS source currently shows —
+  // pushed by core over the same /ws as "active_game" (see
+  // ProcessWatcher/process_watch.hpp), driven by which game's process is
+  // actually running, not by which one is configured. Defaults to "cs2" so
+  // nothing changes for anyone who hasn't set up Dota.
+  let activeGame = "cs2";
+  let faceitValid = false;
+  let dotaValid = false;
+
   function connectWs() {
     ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onmessage = (event) => {
@@ -360,10 +414,25 @@
       if (data.type === "cs2_live") {
         liveState = data;
         renderMatchesArea();
+      } else if (data.type === "active_game") {
+        activeGame = data.game;
+        render();
       }
     };
     ws.onclose = () => setTimeout(connectWs, 2000);
     ws.onerror = () => ws.close();
+  }
+
+  // Toggles which content block is shown and whether the card itself is
+  // visible at all — the card only shows if the *currently active* game
+  // actually has valid data, so switching to Dota before its first
+  // successful poll just keeps the card hidden rather than showing stale
+  // CS2 content or an empty Dota card.
+  function render() {
+    const showDota = activeGame === "dota2";
+    document.getElementById("cs2-content").classList.toggle("visible", !showDota);
+    document.getElementById("dota-content").classList.toggle("visible", showDota);
+    document.getElementById("card").classList.toggle("visible", showDota ? dotaValid : faceitValid);
   }
 
   function applyLiveStrip() {
@@ -479,13 +548,13 @@
     try {
       const resp = await fetch("/api/faceit/snapshot", { cache: "no-store" });
       const data = await resp.json();
-      const card = document.getElementById("card");
 
+      faceitValid = !!data.valid;
       if (!data.valid) {
-        card.classList.remove("visible");
+        render();
         return;
       }
-      card.classList.add("visible");
+      render();
       document.getElementById("nickname").textContent = data.nickname || "";
       const eloEl = document.getElementById("elo");
       eloEl.textContent = data.elo || "—";
@@ -567,10 +636,86 @@
     });
   }
 
+  // OpenDota's recentMatches is already most-recent-first (unlike FACEIT's
+  // history, which needed a reverse() above) — no reordering here.
+  function renderDotaMatches(matches) {
+    const matchesEl = document.getElementById("dmatches");
+    matchesEl.innerHTML = "";
+    matches.forEach((m) => {
+      const d = document.createElement("div");
+      d.className = "match " + (m.win ? "win" : "loss");
+
+      if (m.hero_icon) {
+        const badge = document.createElement("img");
+        badge.className = "map-badge";
+        badge.src = m.hero_icon;
+        badge.title = m.hero_name || "";
+        badge.onerror = () => badge.remove();
+        d.appendChild(badge);
+      }
+
+      const text = document.createElement("div");
+      text.className = "match-text";
+
+      const wl = document.createElement("div");
+      wl.className = "wl";
+      wl.textContent = m.win ? "Победа" : "Поражение";
+      text.appendChild(wl);
+
+      if (m.kills >= 0 && m.deaths >= 0) {
+        const kd = document.createElement("div");
+        kd.className = "kd";
+        kd.textContent = m.kills + "/" + m.deaths + "/" + (m.assists >= 0 ? m.assists : 0);
+        text.appendChild(kd);
+      }
+
+      d.appendChild(text);
+      matchesEl.appendChild(d);
+    });
+  }
+
+  async function refreshDota() {
+    try {
+      const resp = await fetch("/api/dota/snapshot", { cache: "no-store" });
+      const data = await resp.json();
+
+      dotaValid = !!data.valid;
+      if (!data.valid) {
+        render();
+        return;
+      }
+      render();
+
+      document.getElementById("dnickname").textContent = data.personaname || "";
+      document.getElementById("drank").textContent = data.rank_label || "—";
+
+      const avatar = document.getElementById("davatar");
+      if (data.avatar) {
+        avatar.src = data.avatar;
+        avatar.classList.remove("hidden");
+      } else {
+        avatar.classList.add("hidden");
+      }
+
+      const statsEl = document.getElementById("dstats");
+      statsEl.innerHTML = "";
+      if ((data.matches || []).length) {
+        statsEl.appendChild(statTile(Math.round(data.win_rate || 0) + "%", "Винрейт"));
+        statsEl.appendChild(statTile((data.avg_kda || 0).toFixed(2), "Средний KDA"));
+      }
+
+      renderDotaMatches(data.matches || []);
+    } catch (e) {
+      // Same cold-start tolerance as refresh() above.
+    }
+  }
+
   spawnParticles();
   connectWs();
   refresh();
+  refreshDota();
   setInterval(refresh, 20000);
+  setInterval(refreshDota, 20000);
 </script>
 </body>
 </html>

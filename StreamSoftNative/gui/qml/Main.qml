@@ -320,6 +320,7 @@ ApplicationWindow {
                                 { text: "Соцсети", icon: "social" },
                                 { text: "Faceit", icon: "faceit" },
                                 { text: "CS2", icon: "cs2" },
+                                { text: "Dota 2", icon: "dota" },
                                 { text: "Замьюченные", icon: "muted" },
                                 { text: "Настройки", icon: "settings" },
                                 { text: "Обновления", icon: "updates" }
@@ -385,6 +386,7 @@ ApplicationWindow {
                 SocialPage { id: socialPage; width: pageStack.width }
                 FaceitPage { id: faceitPage; width: pageStack.width }
                 Cs2Page { id: cs2Page; width: pageStack.width }
+                DotaPage { id: dotaPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }

@@ -63,6 +63,9 @@ struct ConnectionsConfig {
     bool faceit_enabled = false;
     bool faceit_stats_telegram_enabled = false;
 
+    std::string dota_account_id;
+    bool dota_enabled = false;
+
     bool tts_enabled = true;
     int tts_max_chars = 200;
 
@@ -78,6 +81,7 @@ struct ConnectionsConfig {
     // — a user's own key is optional, only needed if the shared one ever
     // gets rate-limited.
     bool has_faceit() const { return !faceit_nickname.empty(); }
+    bool has_dota() const { return !dota_account_id.empty(); }
     // Reuses the same Telegram channel/bot as "stream started" posts (see
     // SocialPage) — a dedicated channel field would just duplicate config
     // the user already filled in.
@@ -92,6 +96,7 @@ struct ConnectionsConfig {
     bool should_run_telegram_control() const { return should_run_telegram() && telegram_control_enabled; }
     bool should_post_social_telegram() const { return social_telegram_enabled && has_social_telegram(); }
     bool should_run_faceit() const { return faceit_enabled && has_faceit(); }
+    bool should_run_dota() const { return dota_enabled && has_dota(); }
 
     static ConnectionsConfig load() {
         std::ifstream f(kFile, std::ios::binary);
@@ -128,6 +133,8 @@ struct ConnectionsConfig {
                 str("faceit_api_key", c.faceit_api_key);
                 boolean("faceit_enabled", c.faceit_enabled);
                 boolean("faceit_stats_telegram_enabled", c.faceit_stats_telegram_enabled);
+                str("dota_account_id", c.dota_account_id);
+                boolean("dota_enabled", c.dota_enabled);
                 boolean("tts_enabled", c.tts_enabled);
                 integer("tts_max_chars", c.tts_max_chars);
                 boolean("obs_connected", c.obs_connected);
@@ -170,6 +177,8 @@ struct ConnectionsConfig {
         j["faceit_api_key"] = faceit_api_key;
         j["faceit_enabled"] = faceit_enabled;
         j["faceit_stats_telegram_enabled"] = faceit_stats_telegram_enabled;
+        j["dota_account_id"] = dota_account_id;
+        j["dota_enabled"] = dota_enabled;
         j["tts_enabled"] = tts_enabled;
         j["tts_max_chars"] = tts_max_chars;
         j["obs_connected"] = obs_connected;

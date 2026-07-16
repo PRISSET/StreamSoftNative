@@ -30,9 +30,11 @@
 #include "module_installer.hpp"
 #include "obs_client.hpp"
 #include "obs_scene_file.hpp"
+#include "opendota_client.hpp"
 #include "outgoing_queue.hpp"
 #include "points.hpp"
 #include "poll.hpp"
+#include "process_watch.hpp"
 #include "song_queue.hpp"
 #include "runtime_settings.hpp"
 #include "steam_paths.hpp"
@@ -51,6 +53,7 @@ public:
         wire_cs2_gsi();
         setup_routes();
         start_cs2_stale_watch();
+        start_process_watch();
     }
 
     void run() {
@@ -234,6 +237,39 @@ public:
         }).detach();
     }
 
+    // Only ever reports "dota2" when Dota is actually configured — this
+    // keeps CS2 the permanent default for anyone who never touches the Dota
+    // settings, exactly matching today's behavior.
+    std::string decide_active_game() {
+        if (dota_ && dota_->is_running() && process_watch_.current() == ActiveGame::Dota2) return "dota2";
+        return "cs2";
+    }
+
+    crow::json::wvalue active_game_payload() {
+        crow::json::wvalue j;
+        j["type"] = "active_game";
+        j["game"] = decide_active_game();
+        return j;
+    }
+
+    // Polls the process list every 5s to decide which card the shared
+    // Faceit/Dota widget should show (see ProcessWatcher, process_watch.hpp)
+    // — broadcasts only when the decision actually changes.
+    void start_process_watch() {
+        std::thread([this] {
+            std::string last = decide_active_game();
+            while (true) {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                process_watch_.tick();
+                std::string now = decide_active_game();
+                if (now != last) {
+                    last = now;
+                    broadcast_raw(active_game_payload().dump());
+                }
+            }
+        }).detach();
+    }
+
     std::optional<std::string> try_bet_request(const std::string& username, const std::string& text) {
         static const std::string kPrefix = "!bet ";
 
@@ -267,6 +303,7 @@ public:
     }
 
     void set_faceit_client(faceit::FaceitClient* client) { faceit_ = client; }
+    void set_dota_client(dota::OpenDotaClient* client) { dota_ = client; }
 
     void set_broadcaster_name(const std::string& name) { broadcaster_name_ = name; }
 
@@ -683,6 +720,15 @@ private:
                 if (body.has("faceit_enabled")) c.faceit_enabled = body["faceit_enabled"].b();
                 if (body.has("faceit_stats_telegram_enabled"))
                     c.faceit_stats_telegram_enabled = body["faceit_stats_telegram_enabled"].b();
+                if (body.has("dota_account_id")) c.dota_account_id = std::string(body["dota_account_id"].s());
+                if (body.has("dota_enabled")) c.dota_enabled = body["dota_enabled"].b();
+                if (dota_ && (body.has("dota_account_id") || body.has("dota_enabled"))) {
+                    if (c.should_run_dota()) {
+                        dota_->start(c.dota_account_id);
+                    } else {
+                        dota_->stop();
+                    }
+                }
                 if (faceit_ && (body.has("faceit_nickname") || body.has("faceit_api_key") || body.has("faceit_enabled"))) {
                     if (c.should_run_faceit()) {
                         std::string api_key = c.faceit_api_key.empty() ? faceit::shared_api_key() : c.faceit_api_key;
@@ -1034,6 +1080,15 @@ private:
             // across the widget's whole lifetime — without this, stat/ELO
             // changes never show up even though the widget re-fetches this
             // endpoint every 20s.
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
+        CROW_ROUTE(app_, "/api/dota/snapshot")
+        ([this] {
+            crow::json::wvalue resp = dota_ ? dota_->snapshot_json() : crow::json::wvalue();
+            if (!dota_) resp["valid"] = false;
+            crow::response res(resp.dump());
             res.set_header("Cache-Control", "no-store");
             return res;
         });
@@ -1495,6 +1550,7 @@ private:
 
                 conn.send_text(now_playing_payload().dump());
                 conn.send_text(gsi_.snapshot_json().dump());
+                conn.send_text(active_game_payload().dump());
 
                 std::lock_guard<std::mutex> lock(history_mutex_);
                 for (const auto& msg : chat_history_) {
@@ -1589,6 +1645,8 @@ private:
     SongQueue song_queue_;
     GifStore gifs_;
     faceit::FaceitClient* faceit_ = nullptr;
+    dota::OpenDotaClient* dota_ = nullptr;
+    ProcessWatcher process_watch_;
     cs2::GsiState gsi_;
     cs2::BetManager bets_;
     long long match_start_epoch_ = 0;
