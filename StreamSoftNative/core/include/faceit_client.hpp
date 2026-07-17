@@ -8,6 +8,7 @@
 #include <httplib.h>
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <ctime>
 #include <fstream>
@@ -29,6 +30,8 @@ struct MatchResult {
     std::string map;
     int kills = -1;
     int deaths = -1;
+    double adr = -1;
+    double kr_ratio = -1;
 };
 
 struct LifetimeStats {
@@ -53,11 +56,20 @@ struct Snapshot {
     std::string avatar;
     int elo = 0;
     int skill_level = 0;
+    std::string country;   // ISO-3166-1 alpha-2, lowercased (e.g. "cn") — from the player profile
+    std::string region;    // FACEIT ladder region (e.g. "EU"), lowercased for the icon filename
+    int region_rank = 0;   // position within `region`'s ladder — 0 if unranked/unavailable
+    int country_rank = 0;  // position within `country`'s ladder — 0 if unranked/unavailable
     std::vector<MatchResult> matches;
     LifetimeStats lifetime;
     std::vector<EloPoint> elo_history;
     bool has_elo_change_today = false;
     int elo_change_today = 0;
+    int wins_today = 0;
+    int losses_today = 0;
+    double avg_adr_recent = 0;
+    double avg_kills_recent = 0;
+    double avg_kr_recent = 0;
     std::string error;
 };
 
@@ -139,8 +151,17 @@ public:
         j["avatar"] = snapshot_.avatar;
         j["elo"] = snapshot_.elo;
         j["skill_level"] = snapshot_.skill_level;
+        j["country"] = snapshot_.country;
+        j["region"] = snapshot_.region;
+        j["region_rank"] = snapshot_.region_rank;
+        j["country_rank"] = snapshot_.country_rank;
         j["has_elo_change_today"] = snapshot_.has_elo_change_today;
         j["elo_change_today"] = snapshot_.elo_change_today;
+        j["wins_today"] = snapshot_.wins_today;
+        j["losses_today"] = snapshot_.losses_today;
+        j["avg_adr_recent"] = snapshot_.avg_adr_recent;
+        j["avg_kills_recent"] = snapshot_.avg_kills_recent;
+        j["avg_kr_recent"] = snapshot_.avg_kr_recent;
         j["error"] = snapshot_.error;
 
         std::vector<crow::json::wvalue> matches;
@@ -228,6 +249,47 @@ private:
         return "";
     }
 
+    static std::string to_lower(std::string s) {
+        for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    }
+
+    // FACEIT's ladder position endpoint doubles as both "rank within region"
+    // and "rank within country" depending on whether the `country` query
+    // param is set — so this is two calls to the same path, not two
+    // different endpoints. Best-effort like the rest of refresh(): a bad
+    // region string, a player with no ranked position yet, or a transient
+    // API error all just leave region_rank/country_rank at 0 (hidden by the
+    // widget) instead of failing the whole snapshot.
+    void fetch_rankings(httplib::Client& cli, const std::string& player_id, const std::string& region_raw,
+                         const std::string& country_lower, Snapshot& snap) {
+        if (region_raw.empty()) return;
+        try {
+            std::string base = "/data/v4/rankings/games/" + std::string(kGame) + "/regions/" +
+                                twitch::url_encode(region_raw) + "/players/" + player_id;
+            auto resp = cli.Get(base.c_str());
+            if (resp && resp->status == 200) {
+                auto j = crow::json::load(resp->body);
+                if (j && j.has("position")) snap.region_rank = as_int(j["position"]);
+            }
+        } catch (...) {
+            // leave region_rank at 0
+        }
+        if (country_lower.empty()) return;
+        try {
+            std::string path = "/data/v4/rankings/games/" + std::string(kGame) + "/regions/" +
+                                twitch::url_encode(region_raw) + "/players/" + player_id +
+                                "?country=" + twitch::url_encode(country_lower);
+            auto resp = cli.Get(path.c_str());
+            if (resp && resp->status == 200) {
+                auto j = crow::json::load(resp->body);
+                if (j && j.has("position")) snap.country_rank = as_int(j["position"]);
+            }
+        } catch (...) {
+            // leave country_rank at 0
+        }
+    }
+
     void load_elo_history() {
         std::lock_guard<std::mutex> lock(mutex_);
         elo_history_.clear();
@@ -309,6 +371,37 @@ private:
         snap.has_elo_change_today = true;
     }
 
+    // Wins/losses today, purely from whatever's already in snap.matches (the
+    // last 5 fetched) — no extra API call. Best-effort like elo_change_today
+    // above: if someone plays more than 5 matches in a day this undercounts,
+    // it's a "today so far, from what we can see" tally, not a guaranteed
+    // exhaustive one.
+    void compute_matches_today(Snapshot& snap) {
+        long long today_start = start_of_today();
+        for (const auto& m : snap.matches) {
+            if (m.finished_at < today_start) continue;
+            if (m.win) snap.wins_today++;
+            else snap.losses_today++;
+        }
+    }
+
+    // ADR/K/R aren't in FACEIT's lifetime stats endpoint (only per-match, via
+    // fetch_match_stats) — so unlike win_rate/avg_kd (true all-time numbers),
+    // these are just an average over the 5 matches already fetched for the
+    // match strip. Good enough for a "recent form" widget, not a lifetime stat.
+    void compute_recent_averages(Snapshot& snap) {
+        double adr_sum = 0, kills_sum = 0, kr_sum = 0;
+        int adr_n = 0, kills_n = 0, kr_n = 0;
+        for (const auto& m : snap.matches) {
+            if (m.adr >= 0) { adr_sum += m.adr; adr_n++; }
+            if (m.kills >= 0) { kills_sum += m.kills; kills_n++; }
+            if (m.kr_ratio >= 0) { kr_sum += m.kr_ratio; kr_n++; }
+        }
+        if (adr_n) snap.avg_adr_recent = adr_sum / adr_n;
+        if (kills_n) snap.avg_kills_recent = kills_sum / kills_n;
+        if (kr_n) snap.avg_kr_recent = kr_sum / kr_n;
+    }
+
     std::string resolve_player_id(const std::string& nickname, const std::string& api_key) {
         auto cli = make_client(api_key);
         auto resp = cli.Get("/data/v4/players?nickname=" + twitch::url_encode(nickname));
@@ -339,15 +432,20 @@ private:
 
         snap.nickname = profile.has("nickname") ? std::string(profile["nickname"].s()) : "";
         snap.avatar = profile.has("avatar") ? std::string(profile["avatar"].s()) : "";
+        if (profile.has("country")) snap.country = to_lower(std::string(profile["country"].s()));
+        std::string region_raw;
         if (profile.has("games") && profile["games"].has(kGame)) {
             auto game = profile["games"][kGame];
             if (game.has("faceit_elo")) snap.elo = as_int(game["faceit_elo"]);
             if (game.has("skill_level")) snap.skill_level = as_int(game["skill_level"]);
+            if (game.has("region")) region_raw = std::string(game["region"].s());
         }
+        snap.region = to_lower(region_raw);
         if (snap.elo > 0) {
             record_elo(snap.elo);
             compute_elo_change_today(snap);
         }
+        fetch_rankings(cli, player_id, region_raw, snap.country, snap);
 
         fetch_lifetime(cli, player_id, snap.lifetime);
 
@@ -422,6 +520,8 @@ private:
         snap.valid = true;
         std::lock_guard<std::mutex> lock(mutex_);
         snap.elo_history = elo_history_;
+        compute_matches_today(snap);
+        compute_recent_averages(snap);
         snapshot_ = std::move(snap);
     }
 
@@ -478,6 +578,8 @@ private:
                         auto pstats = p["player_stats"];
                         if (pstats.has("Kills")) out.kills = as_int(pstats["Kills"]);
                         if (pstats.has("Deaths")) out.deaths = as_int(pstats["Deaths"]);
+                        if (pstats.has("ADR")) out.adr = as_double(pstats["ADR"]);
+                        if (pstats.has("K/R Ratio")) out.kr_ratio = as_double(pstats["K/R Ratio"]);
                         return;
                     }
                 }

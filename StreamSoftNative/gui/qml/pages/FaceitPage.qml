@@ -11,6 +11,23 @@ ColumnLayout {
 
     property bool hasSocialTelegram: false
 
+    readonly property var bannerThemes: [
+        { key: "milk", label: "Milk", bg: "#ffffff", border: "#c9ced6", text: "#1a2a3e" },
+        { key: "faceitstyle", label: "Faceit", bg: "#1f1f22", border: "#ff0000", text: "#ffffff" },
+        { key: "whitecyber", label: "White Cyber", bg: "#f4f6fa", border: "#0b1428", text: "#0a0a0a" },
+        { key: "darkside", label: "DarkSide", bg: "#0a0812", border: "#b14bff", text: "#f5f0ff", accent2: "#22d3ee" }
+    ]
+    property string bannerTheme: "milk"
+
+    function setBannerTheme(key) {
+        if (root.bannerTheme === key) return
+        root.bannerTheme = key
+        api.post("/api/settings", { banner_theme: key }, function (ok) {
+            statusText.text = ok ? "Цвет виджета применён." : "Не удалось сохранить цвет."
+            statusTimer.restart()
+        })
+    }
+
     function load() {
         loading = true
         api.get("/api/connections", function (ok, data) {
@@ -23,6 +40,9 @@ ColumnLayout {
             hasSocialTelegram = !!(data.telegram_bot_token && data.telegram_bot_token.length > 0 &&
                                     data.social_telegram_channel_id && data.social_telegram_channel_id.length > 0)
             loading = false
+        })
+        api.get("/api/settings", function (ok, data) {
+            if (ok && data.banner_theme) root.bannerTheme = data.banner_theme
         })
     }
 
@@ -60,8 +80,10 @@ ColumnLayout {
         subtitle: "Виджет на оверлее: ник, актуальное ELO и последние 5 матчей (CS2). Обновляется само каждые ~1.5 минуты."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "faceit_nickname"
+        title: "Ник и виджет"
 
         Text { text: "Никнейм на Faceit"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         GlassTextField {
@@ -81,8 +103,66 @@ ColumnLayout {
         GlassToggle { id: enabledToggle; text: "Показывать виджет на оверлее"; onToggled: root.save() }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "faceit_bannerTheme"
+        title: "Вид виджета"
+        subtitle: "Карточка ELO/матчей на оверлее в OBS — применяется сразу, без перезапуска источника."
+
+        Text { text: "Цвет"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        RowLayout {
+            spacing: 10
+            Repeater {
+                model: root.bannerThemes
+                delegate: Rectangle {
+                    required property var modelData
+                    width: 92
+                    height: 56
+                    radius: 12
+                    color: modelData.bg
+                    gradient: modelData.accent2 ? swatchGradient : null
+                    border.width: root.bannerTheme === modelData.key ? 3 : 2
+                    border.color: root.bannerTheme === modelData.key ? Theme.accent : modelData.border
+
+                    Gradient {
+                        id: swatchGradient
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: modelData.bg }
+                        GradientStop { position: 1.0; color: modelData.accent2 || modelData.bg }
+                    }
+
+                    Behavior on border.width { NumberAnimation { duration: 150 } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: modelData.text
+                        font.bold: true
+                        font.pixelSize: Theme.fontSm
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.setBannerTheme(modelData.key)
+                    }
+                }
+            }
+            Item { Layout.fillWidth: true }
+        }
+        Text {
+            text: "Подгони источник «StreamSoft Faceit» в OBS под низкий и широкий прямоугольник (например 580×170) — карточка сама по себе компактная, лишнее место остаётся прозрачным."
+            color: Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+    }
+
+    CollapsibleCard {
+        Layout.fillWidth: true
+        settingsKey: "faceit_apiKey"
+        title: "Свой API-ключ"
 
         RowLayout {
             Layout.fillWidth: true
@@ -113,14 +193,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Статистика в Telegram"
-            subtitle: "После каждого стрима — сколько ELO поднял/слил за стрим, за день, за месяц, за год. Раз в месяц — вся история матчей за прошедший месяц."
-        }
+        settingsKey: "faceit_telegramStats"
+        title: "Статистика в Telegram"
+        subtitle: "После каждого стрима — сколько ELO поднял/слил за стрим, за день, за месяц, за год. Раз в месяц — вся история матчей за прошедший месяц."
 
         GlassToggle {
             id: statsToggle
@@ -138,15 +215,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: root.snapshot.valid
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: root.snapshot.nickname || ""
-            subtitle: "ELO " + (root.snapshot.elo || "—") + " · уровень " + (root.snapshot.skill_level || "?")
-        }
+        settingsKey: "faceit_livePreview"
+        title: root.snapshot.nickname || ""
+        subtitle: "ELO " + (root.snapshot.elo || "—") + " · уровень " + (root.snapshot.skill_level || "?")
 
         RowLayout {
             Layout.fillWidth: true

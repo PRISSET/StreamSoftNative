@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app_paths.hpp"
+#include "twitch_auth.hpp"
 
 #include <crow/json.h>
 #include <crow/logging.h>
@@ -18,6 +19,11 @@
 namespace streamsoft::telegram {
 
 inline httplib::Client make_client() {
+    // Shares twitch::https_client_construction_mutex() — see the comment
+    // there. Same httplib::Client-construction-isn't-thread-safe-on-first-
+    // use issue applies to every HTTPS client in the app, not just Faceit/
+    // Dota's, so this reuses the one fix instead of duplicating it.
+    std::lock_guard<std::mutex> lock(twitch::https_client_construction_mutex());
     httplib::Client cli("https://api.telegram.org");
     cli.enable_server_certificate_verification(true);
 #ifndef CPPHTTPLIB_WINDOWS_AUTOMATIC_ROOT_CERTIFICATES_UPDATE
@@ -50,6 +56,11 @@ inline std::string event_label(const std::string& kind) {
     if (kind == "raid") return "🚀 Рейд";
     if (kind == "cheer")
         return "💎 Донат битсами";
+    if (kind == "youtube_sub") return "⭐ Новый участник (YouTube)";
+    if (kind == "youtube_sub_milestone") return "🎉 Юбилей участия (YouTube)";
+    if (kind == "youtube_gift_sub") return "🎁 Подарочное участие (YouTube)";
+    if (kind == "youtube_superchat") return "💰 Super Chat (YouTube)";
+    if (kind == "youtube_supersticker") return "💰 Super Sticker (YouTube)";
     return kind;
 }
 

@@ -12,7 +12,12 @@ ColumnLayout {
         { key: "subscribe", label: "Подписка" },
         { key: "gift_sub", label: "Подарочная подписка" },
         { key: "raid", label: "Рейд" },
-        { key: "cheer", label: "Донат битсами" }
+        { key: "cheer", label: "Донат битсами" },
+        { key: "youtube_sub", label: "YouTube: новый участник" },
+        { key: "youtube_sub_milestone", label: "YouTube: юбилей участия" },
+        { key: "youtube_gift_sub", label: "YouTube: подарочное участие" },
+        { key: "youtube_superchat", label: "YouTube: Super Chat" },
+        { key: "youtube_supersticker", label: "YouTube: Super Sticker" }
     ]
 
     property var status: ({})
@@ -43,8 +48,10 @@ ColumnLayout {
         subtitle: "Гифка и звук на каждое событие — follow.gif/mp3 и т.д."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "alerts_media"
+        title: "Настройка алертов"
 
         Repeater {
             model: root.kinds
@@ -58,7 +65,9 @@ ColumnLayout {
                     color: Theme.text
                     font.pixelSize: Theme.fontMd
                     font.bold: true
-                    Layout.preferredWidth: 150
+                    wrapMode: Text.WordWrap
+                    Layout.preferredWidth: 210
+                    Layout.maximumWidth: 210
                 }
 
                 MediaSlot {

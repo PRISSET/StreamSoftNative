@@ -39,8 +39,10 @@ ColumnLayout {
         subtitle: "Автоответы по триггеру (!команда) с кулдауном."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "commands_add"
+        title: "Добавить команду"
 
         RowLayout {
             Layout.fillWidth: true
@@ -89,8 +91,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "commands_list"
+        title: "Список"
 
         RowLayout {
             Layout.fillWidth: true

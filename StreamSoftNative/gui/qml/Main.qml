@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
+import QtQuick.Window
 import QtCore
 import Qt.labs.platform as Labs
 import StreamSoftGui
@@ -119,6 +120,23 @@ ApplicationWindow {
     Connections {
         target: api
         function onMutationSucceeded() { notifySaved() }
+    }
+
+    property var appNotices: []
+    property int appNoticeSeq: 0
+
+    Connections {
+        target: overlayEvents
+        function onAppNotice(title, detail) {
+            window.appNoticeSeq += 1
+            var list = window.appNotices.slice()
+            list.push({ id: window.appNoticeSeq, title: title, detail: detail })
+            window.appNotices = list
+        }
+    }
+
+    function dismissAppNotice(id) {
+        window.appNotices = window.appNotices.filter(function (n) { return n.id !== id })
     }
 
     Item {
@@ -434,6 +452,112 @@ ApplicationWindow {
                 color: Theme.text
                 font.pixelSize: Theme.fontMd
                 font.weight: Font.DemiBold
+            }
+        }
+    }
+
+    // Steam-style stacked corner notifications ("Трансляция Twitch/YouTube
+    // запущена/завершена") — a real separate top-level window pinned to the
+    // corner of the actual screen (like Steam's own friend/game
+    // notifications), not an overlay item inside the app window. It has to
+    // show up even if the app window is elsewhere on screen, minimized, or
+    // behind a fullscreen game — none of which an anchored Item inside
+    // ApplicationWindow could ever do.
+    Window {
+        id: appNoticeWindow
+        // Declaring a Window inside another Window's item tree auto-wires a
+        // transientParent — which on Windows cascades minimize/hide from
+        // the owner to this one, so the notification vanished exactly when
+        // the main app window was minimized or sent to tray. Breaking that
+        // link is what actually makes it independent, not the window flags.
+        transientParent: null
+        flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        color: "transparent"
+        visible: window.appNotices.length > 0
+        width: 380
+        height: Math.max(1, appNoticeColumn.implicitHeight)
+        x: Screen.desktopAvailableWidth - width - 24
+        y: Screen.desktopAvailableHeight - height - 24
+
+        Column {
+            id: appNoticeColumn
+            width: parent.width
+            spacing: 10
+
+            Repeater {
+                model: window.appNotices
+                delegate: Item {
+                    id: noticeItem
+                    required property var modelData
+                    width: appNoticeColumn.width
+                    height: noticeSurface.implicitHeight
+                    opacity: 0
+                    scale: 0.94
+                    Component.onCompleted: { opacity = 1; scale = 1 }
+                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                    Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+
+                    Timer {
+                        interval: 7000
+                        running: true
+                        onTriggered: window.dismissAppNotice(noticeItem.modelData.id)
+                    }
+
+                    GlassSurface {
+                        id: noticeSurface
+                        width: parent.width
+                        implicitHeight: noticeRow.implicitHeight + 28
+                        radiusPx: Theme.radiusMd
+                        pad: 14
+                        refractPx: 10
+                        specularStrength: 0.6
+                        tintColor: Qt.rgba(0.07, 0.07, 0.08, 0.92)
+                        rimColor: Theme.accent
+
+                        TapHandler { onTapped: window.dismissAppNotice(noticeItem.modelData.id) }
+
+                        RowLayout {
+                            id: noticeRow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            spacing: 12
+
+                            Image {
+                                source: "qrc:/qt/qml/StreamSoftGui/qml/assets/icons/app-icon.png"
+                                Layout.preferredWidth: 40
+                                Layout.preferredHeight: 40
+                                sourceSize.width: 80
+                                sourceSize.height: 80
+                                fillMode: Image.PreserveAspectFit
+                                smooth: true
+                                mipmap: true
+                            }
+
+                            ColumnLayout {
+                                spacing: 3
+                                Layout.fillWidth: true
+                                Text {
+                                    text: noticeItem.modelData.title
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fontLg
+                                    font.weight: Font.Black
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: noticeItem.modelData.detail
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fontMd
+                                    font.weight: Font.DemiBold
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

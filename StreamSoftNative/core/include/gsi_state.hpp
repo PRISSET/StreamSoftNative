@@ -175,6 +175,11 @@ public:
         return changed;
     }
 
+    bool is_active() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return !last_phase_.empty() && last_phase_ != "gameover";
+    }
+
     crow::json::wvalue snapshot_json() {
         std::lock_guard<std::mutex> lock(mutex_);
         crow::json::wvalue j;

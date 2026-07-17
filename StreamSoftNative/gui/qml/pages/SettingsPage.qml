@@ -47,10 +47,10 @@ ColumnLayout {
         subtitle: "Внешний вид приложения — фон и тема окна."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        Text { text: "Оформление"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        settingsKey: "settings_appearance"
+        title: "Оформление"
 
         RowLayout {
             Layout.fillWidth: true
@@ -122,11 +122,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: root.win.flatTheme
+        settingsKey: "settings_background_flat"
+        title: "Фон приложения"
 
-        Text { text: "Фон приложения"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         Text {
             text: "В «Обычной» теме фон зафиксирован — выбор картинки и блюр недоступны. Переключись на «Glass» выше, чтобы вернуть настройку фона."
             color: Theme.textFaint
@@ -136,11 +137,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: !root.win.flatTheme
-
-        Text { text: "Фон приложения"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        settingsKey: "settings_background"
+        title: "Фон приложения"
 
         GlassComboBox {
             id: bgCombo
@@ -168,11 +169,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: !root.win.flatTheme
-
-        Text { text: "Блюр фона"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
+        settingsKey: "settings_blur"
+        title: "Блюр фона"
 
         GlassToggle {
             id: blurToggle
@@ -212,11 +213,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: !root.win.flatTheme
+        settingsKey: "settings_customThemes"
+        title: "Мои темы"
 
-        Text { text: "Мои темы"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         Text {
             text: "Своя картинка на фон — можно добавить сколько угодно и переключаться."
             color: Theme.textFaint
@@ -297,14 +299,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Автозапуск"
-            subtitle: "Запускать StreamSoft автоматически при входе в Windows."
-        }
+        settingsKey: "settings_autostart"
+        title: "Автозапуск"
+        subtitle: "Запускать StreamSoft автоматически при входе в Windows."
 
         GlassToggle {
             id: autostartToggle
@@ -317,14 +316,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Логи"
-            subtitle: "Последние строки streamsoft.log — полезно для диагностики, если что-то не подключается (Twitch, TTS и т.д.)."
-        }
+        settingsKey: "settings_logs"
+        title: "Логи"
+        subtitle: "Последние строки streamsoft.log — полезно для диагностики, если что-то не подключается (Twitch, TTS и т.д.)."
 
         RowLayout {
             Layout.fillWidth: true

@@ -84,13 +84,10 @@ ColumnLayout {
         subtitle: "Зрители копят баллы за сообщения в чате и тратят их на музыку (\"!song <ссылка>\") или на ставки во время матчей CS2 (\"!bet win/lose <баллы>\")."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Начисление"
-        }
+        settingsKey: "points_accrual"
+        title: "Начисление"
 
         RowLayout {
             Layout.fillWidth: true
@@ -105,14 +102,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Музыка"
-            subtitle: "Реквесты треков за баллы."
-        }
+        settingsKey: "points_music"
+        title: "Музыка"
+        subtitle: "Реквесты треков за баллы."
 
         GlassToggle {
             id: songEnabledToggle
@@ -145,16 +139,13 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Сейчас играет"
-            subtitle: root.queueStatus.current
-                ? (root.queueStatus.current.platform === "youtube" ? "YouTube" : "SoundCloud") + " — заказал " + root.queueStatus.current.requester
-                : "Ничего не играет"
-        }
+        settingsKey: "points_nowPlaying"
+        title: "Сейчас играет"
+        subtitle: root.queueStatus.current
+            ? (root.queueStatus.current.platform === "youtube" ? "YouTube" : "SoundCloud") + " — заказал " + root.queueStatus.current.requester
+            : "Ничего не играет"
 
         RowLayout {
             Layout.fillWidth: true
@@ -193,14 +184,11 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Ставки зрителей (CS2)"
-            subtitle: "С варм-апа и до начала выбранного раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. После матча бот сверяется с Faceit: если это был подтверждённый матч — раздаёт баллы угадавшим, если нет (обычная игра, отменённая катка) — возвращает ставки всем. Live-статус матча и установка GSI-конфига — в «Игровой баннер» → CS2."
-        }
+        settingsKey: "points_bets"
+        title: "Ставки зрителей (CS2)"
+        subtitle: "С варм-апа и до начала выбранного раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. После матча бот сверяется с Faceit: если это был подтверждённый матч — раздаёт баллы угадавшим, если нет (обычная игра, отменённая катка) — возвращает ставки всем. Live-статус матча и установка GSI-конфига — в «Игровой баннер» → CS2."
 
         GlassToggle {
             id: betsToggle
@@ -257,13 +245,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Топ по баллам"
-        }
+        settingsKey: "points_leaderboard"
+        title: "Топ по баллам"
 
         Text {
             visible: root.leaderboard.length === 0

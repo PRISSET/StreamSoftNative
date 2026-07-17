@@ -106,8 +106,10 @@ ColumnLayout {
         title: "Установка TTS-модуля"
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "voice_ttsVoices"
+        title: "Голоса и скорость"
 
         RowLayout {
             Layout.fillWidth: true
@@ -145,8 +147,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "voice_ttsVolume"
+        title: "Громкость TTS"
 
         RowLayout {
             Layout.fillWidth: true
@@ -167,8 +171,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "voice_alertVolume"
+        title: "Громкость алертов"
         RowLayout {
             Layout.fillWidth: true
             Text { text: "Громкость чтения алертов"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
@@ -195,8 +201,10 @@ ColumnLayout {
         title: "Установка RVC-модуля"
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "voice_rvcStatus"
+        title: "Статус RVC-сервиса"
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -233,8 +241,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "voice_rvcSettings"
+        title: "Настройки голоса RVC"
 
         GlassToggle {
             id: rvcEnabledToggle

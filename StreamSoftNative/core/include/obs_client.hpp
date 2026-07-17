@@ -52,8 +52,16 @@ public:
     static constexpr int kPollHeight = 680;
     static constexpr int kNowPlayingWidth = 480;
     static constexpr int kNowPlayingHeight = 270;
-    static constexpr int kFaceitWidth = 820;
-    static constexpr int kFaceitHeight = 300;
+    // The widget redesign (faceit.html) sizes the card to its own content
+    // now — a slim ~580x170 stat strip, not the old 820x300 landscape card
+    // these constants were originally sized for. Kept updated here too so
+    // a fresh OBS source (new install, or "recreate source") gets a source
+    // box that actually matches instead of a huge mostly-transparent one
+    // the user has to manually shrink (see NOTES_TODO for the follow-up:
+    // resizing an EXISTING already-placed source needs SetInputSettings on
+    // that source's name, not just this creation-time default).
+    static constexpr int kFaceitWidth = 580;
+    static constexpr int kFaceitHeight = 170;
 
     ~ObsClient() { ws_.stop(); }
 
@@ -114,6 +122,22 @@ public:
             throw std::runtime_error("OBS отклонил запрос " + request_type + ": " + comment);
         }
         return d_field["responseData"];
+    }
+
+    // Editing faceit.html/game-banner-*.js on disk has zero effect on a
+    // browser source that's already loaded in OBS — CEF keeps running the
+    // page it loaded when the source was first added, `Cache-Control:
+    // no-store` on the HTML response only stops a FUTURE load from being
+    // cached, it can't force an already-open tab to re-fetch anything
+    // (learned the hard way: a whole session's worth of widget-theme edits
+    // sat invisible in a stale OBS tab). `PressInputPropertiesButton` +
+    // `refreshnocache` is obs-websocket v5's documented equivalent of the
+    // browser source's own right-click "Refresh cache of current page".
+    void refresh_source(const std::string& source_name) {
+        crow::json::wvalue req;
+        req["inputName"] = source_name;
+        req["propertyName"] = "refreshnocache";
+        request("PressInputPropertiesButton", std::move(req));
     }
 
     void ensure_browser_sources(int overlay_port) {

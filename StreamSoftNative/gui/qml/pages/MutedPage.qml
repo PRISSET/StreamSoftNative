@@ -33,8 +33,10 @@ ColumnLayout {
         subtitle: "Их сообщения не читаются вслух и не показываются в оверлее."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "muted_add"
+        title: "Замьютить"
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
@@ -51,8 +53,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "muted_list"
+        title: "Список"
 
         Text {
             visible: root.muted.length === 0
