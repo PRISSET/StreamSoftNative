@@ -2,6 +2,11 @@ import QtQuick
 import QtQuick.Layouts
 import StreamSoftGui
 
+// Everything that earns or spends the same viewer point balance used to be
+// split across two unrelated-looking nav entries — "Музыка" (earn rate +
+// song requests) and a "Ставки зрителей" card buried inside the CS2 sub-tab
+// of the game banner page. Both spend/earn the same points.json balance
+// (see points.hpp), so they're one page now.
 ColumnLayout {
     id: root
     spacing: 18
@@ -12,20 +17,32 @@ ColumnLayout {
 
     function applySettings(settings) {
         loading = true
-        enabledToggle.checked = !!settings.song_requests_enabled
+        pointsSlider.value = settings.points_per_message !== undefined ? settings.points_per_message : 1
+
+        songEnabledToggle.checked = !!settings.song_requests_enabled
         costSlider.value = settings.song_request_cost !== undefined ? settings.song_request_cost : 50
         volumeSlider.value = settings.song_request_volume !== undefined ? settings.song_request_volume : 80
-        pointsSlider.value = settings.points_per_message !== undefined ? settings.points_per_message : 1
+
+        betsToggle.checked = !!settings.bets_enabled
+        minSlider.value = settings.bet_min !== undefined ? settings.bet_min : 10
+        maxSlider.value = settings.bet_max !== undefined ? settings.bet_max : 500
+        multiplierSlider.value = settings.bet_payout_multiplier !== undefined ? settings.bet_payout_multiplier * 10 : 20
+        lockRoundSlider.value = settings.bet_lock_round !== undefined ? settings.bet_lock_round : 3
         loading = false
     }
 
     function save() {
         if (loading) return
         api.post("/api/settings", {
-            song_requests_enabled: enabledToggle.checked,
+            points_per_message: Math.round(pointsSlider.value),
+            song_requests_enabled: songEnabledToggle.checked,
             song_request_cost: Math.round(costSlider.value),
             song_request_volume: Math.round(volumeSlider.value),
-            points_per_message: Math.round(pointsSlider.value)
+            bets_enabled: betsToggle.checked,
+            bet_min: Math.round(minSlider.value),
+            bet_max: Math.round(maxSlider.value),
+            bet_payout_multiplier: multiplierSlider.value / 10,
+            bet_lock_round: Math.round(lockRoundSlider.value)
         }, function () {})
     }
 
@@ -63,17 +80,16 @@ ColumnLayout {
 
     SectionHeader {
         Layout.fillWidth: true
-        title: "Музыка"
-        subtitle: "Зрители копят баллы за сообщения в чате и тратят их на \"!song <ссылка YouTube/SoundCloud>\"."
+        title: "Баллы"
+        subtitle: "Зрители копят баллы за сообщения в чате и тратят их на музыку (\"!song <ссылка>\") или на ставки во время матчей CS2 (\"!bet win/lose <баллы>\")."
     }
 
     GlassCard {
         Layout.fillWidth: true
 
-        GlassToggle {
-            id: enabledToggle
-            text: "Включить реквесты музыки за баллы"
-            onToggled: root.save()
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Начисление"
         }
 
         RowLayout {
@@ -86,6 +102,22 @@ ColumnLayout {
             Layout.fillWidth: true
             from: 0; to: 20; stepSize: 1
             onMoved: root.save()
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Музыка"
+            subtitle: "Реквесты треков за баллы."
+        }
+
+        GlassToggle {
+            id: songEnabledToggle
+            text: "Включить реквесты музыки за баллы"
+            onToggled: root.save()
         }
 
         RowLayout {
@@ -158,6 +190,70 @@ ColumnLayout {
                     Layout.fillWidth: true
                 }
             }
+        }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Ставки зрителей (CS2)"
+            subtitle: "С варм-апа и до начала выбранного раунда — зрители пишут !bet win <баллы> или !bet lose <баллы>. После матча бот сверяется с Faceit: если это был подтверждённый матч — раздаёт баллы угадавшим, если нет (обычная игра, отменённая катка) — возвращает ставки всем. Live-статус матча и установка GSI-конфига — в «Игровой баннер» → CS2."
+        }
+
+        GlassToggle {
+            id: betsToggle
+            text: "Включить ставки"
+            onToggled: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Ставки принимаются до раунда"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: Math.round(lockRoundSlider.value) + ""; color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: lockRoundSlider
+            Layout.fillWidth: true
+            from: 1; to: 8; stepSize: 1
+            onMoved: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Минимальная ставка"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: Math.round(minSlider.value) + " баллов"; color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: minSlider
+            Layout.fillWidth: true
+            from: 1; to: 500; stepSize: 1
+            onMoved: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Максимальная ставка"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: Math.round(maxSlider.value) + " баллов"; color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: maxSlider
+            Layout.fillWidth: true
+            from: 10; to: 5000; stepSize: 10
+            onMoved: root.save()
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: "Выплата за верную ставку"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true; Layout.fillWidth: true }
+            Text { text: "x" + (multiplierSlider.value / 10).toFixed(1); color: Theme.text; font.pixelSize: Theme.fontMd; font.bold: true }
+        }
+        GlassSlider {
+            id: multiplierSlider
+            Layout.fillWidth: true
+            from: 10; to: 30; stepSize: 1
+            onMoved: root.save()
         }
     }
 

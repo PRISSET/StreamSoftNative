@@ -48,6 +48,7 @@ struct RuntimeSettings {
     double bet_payout_multiplier = 2.0;
     int bet_lock_round = 3;
     std::string gsi_token;
+    std::string dota_gsi_token;
 
     static constexpr const char* kFile = "runtime_settings.json";
 
@@ -90,13 +91,20 @@ struct RuntimeSettings {
                 if (j.has("bet_payout_multiplier")) s.bet_payout_multiplier = j["bet_payout_multiplier"].d();
                 if (j.has("bet_lock_round")) s.bet_lock_round = static_cast<int>(j["bet_lock_round"].i());
                 if (j.has("gsi_token")) s.gsi_token = std::string(j["gsi_token"].s());
+                if (j.has("dota_gsi_token")) s.dota_gsi_token = std::string(j["dota_gsi_token"].s());
             }
         }
 
+        bool needs_save = false;
         if (s.gsi_token.empty()) {
             s.gsi_token = generate_gsi_token();
-            s.save();
+            needs_save = true;
         }
+        if (s.dota_gsi_token.empty()) {
+            s.dota_gsi_token = generate_gsi_token();
+            needs_save = true;
+        }
+        if (needs_save) s.save();
 
         return s;
     }
@@ -133,6 +141,7 @@ struct RuntimeSettings {
         j["bet_payout_multiplier"] = bet_payout_multiplier;
         j["bet_lock_round"] = bet_lock_round;
         j["gsi_token"] = gsi_token;
+        j["dota_gsi_token"] = dota_gsi_token;
         return j;
     }
 

@@ -21,6 +21,8 @@
 #include "bet_manager.hpp"
 #include "chat_commands.hpp"
 #include "connections_config.hpp"
+#include "dota_gsi_state.hpp"
+#include "dota_steam_paths.hpp"
 #include "faceit_client.hpp"
 #include "faceit_shared_key.hpp"
 #include "gif_store.hpp"
@@ -51,6 +53,8 @@ public:
         : port_(port), web_dir_(std::move(web_dir)), media_dir_(web_dir_ / "media"), runtime_(RuntimeSettings::load()) {
         std::filesystem::create_directories(media_dir_);
         wire_cs2_gsi();
+        wire_dota_gsi();
+        dota_gsi_.load_heroes_async();
         setup_routes();
         start_cs2_stale_watch();
         start_process_watch();
@@ -130,6 +134,15 @@ public:
             broadcast_raw(gsi_.snapshot_json().dump());
             void_bets_after_abort();
         });
+    }
+
+    // No betting/round-lock logic for Dota (out of scope, see CLAUDE.md/plan)
+    // — just broadcasting the live snapshot so the shared Faceit/Dota widget
+    // can show it the instant a match starts.
+    void wire_dota_gsi() {
+        dota_gsi_.set_match_start_callback([this] { broadcast_raw(dota_gsi_.snapshot_json().dump()); });
+        dota_gsi_.set_match_end_callback([this](bool) { broadcast_raw(dota_gsi_.snapshot_json().dump()); });
+        dota_gsi_.set_match_abort_callback([this] { broadcast_raw(dota_gsi_.snapshot_json().dump()); });
     }
 
     static long long current_epoch() {
@@ -233,17 +246,23 @@ public:
                     broadcast_raw(gsi_.snapshot_json().dump());
                     void_bets_after_abort();
                 }
+                if (dota_gsi_.tick_staleness(kGsiStaleTimeoutSeconds)) {
+                    broadcast_raw(dota_gsi_.snapshot_json().dump());
+                }
             }
         }).detach();
     }
 
-    // Only ever reports "dota2" when Dota is actually configured — this
+    // Only ever reports "dota2" when the Dota widget is actually turned on —
     // keeps CS2 the permanent default for anyone who never touches the Dota
-    // settings, exactly matching today's behavior.
+    // settings. Deliberately independent of whether an OpenDota account id
+    // is configured: GSI-based live tracking works without one.
     std::string decide_active_game() {
-        if (dota_ && dota_->is_running() && process_watch_.current() == ActiveGame::Dota2) return "dota2";
+        if (dota_widget_enabled_ && process_watch_.current() == ActiveGame::Dota2) return "dota2";
         return "cs2";
     }
+
+    void set_dota_enabled(bool enabled) { dota_widget_enabled_ = enabled; }
 
     crow::json::wvalue active_game_payload() {
         crow::json::wvalue j;
@@ -722,6 +741,7 @@ private:
                     c.faceit_stats_telegram_enabled = body["faceit_stats_telegram_enabled"].b();
                 if (body.has("dota_account_id")) c.dota_account_id = std::string(body["dota_account_id"].s());
                 if (body.has("dota_enabled")) c.dota_enabled = body["dota_enabled"].b();
+                if (body.has("dota_enabled")) set_dota_enabled(c.dota_enabled);
                 if (dota_ && (body.has("dota_account_id") || body.has("dota_enabled"))) {
                     if (c.should_run_dota()) {
                         dota_->start(c.dota_account_id);
@@ -1128,6 +1148,46 @@ private:
                     token = runtime_.gsi_token;
                 }
                 auto result = cs2::install_gsi_cfg(token, port_);
+                crow::json::wvalue resp;
+                resp["ok"] = result.ok;
+                resp["error"] = result.error;
+                resp["path"] = result.path;
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/gsi-dota")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                if (!body) return crow::response(400);
+
+                std::string expected_token;
+                {
+                    std::lock_guard<std::mutex> lock(runtime_mutex_);
+                    expected_token = runtime_.dota_gsi_token;
+                }
+                std::string got_token =
+                    (body.has("auth") && body["auth"].has("token")) ? std::string(body["auth"]["token"].s()) : "";
+                if (expected_token.empty() || got_token != expected_token) return crow::response(403);
+
+                if (dota_gsi_.update(body)) broadcast_raw(dota_gsi_.snapshot_json().dump());
+                return crow::response(200);
+            });
+
+        CROW_ROUTE(app_, "/api/dota/live")
+        ([this] {
+            crow::response res(dota_gsi_.snapshot_json().dump());
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
+        CROW_ROUTE(app_, "/api/dota/install-cfg")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request&) {
+                std::string token;
+                {
+                    std::lock_guard<std::mutex> lock(runtime_mutex_);
+                    token = runtime_.dota_gsi_token;
+                }
+                auto result = dota::install_gsi_cfg(token, port_);
                 crow::json::wvalue resp;
                 resp["ok"] = result.ok;
                 resp["error"] = result.error;
@@ -1550,6 +1610,7 @@ private:
 
                 conn.send_text(now_playing_payload().dump());
                 conn.send_text(gsi_.snapshot_json().dump());
+                conn.send_text(dota_gsi_.snapshot_json().dump());
                 conn.send_text(active_game_payload().dump());
 
                 std::lock_guard<std::mutex> lock(history_mutex_);
@@ -1646,8 +1707,10 @@ private:
     GifStore gifs_;
     faceit::FaceitClient* faceit_ = nullptr;
     dota::OpenDotaClient* dota_ = nullptr;
+    std::atomic<bool> dota_widget_enabled_{false};
     ProcessWatcher process_watch_;
     cs2::GsiState gsi_;
+    dota::DotaGsiState dota_gsi_;
     cs2::BetManager bets_;
     long long match_start_epoch_ = 0;
     std::string broadcaster_name_;

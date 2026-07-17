@@ -48,12 +48,13 @@ qt_add_qml_module(streamsoft_gui
         qml/pages/AlertsPage.qml
         qml/pages/CommandsPage.qml
         qml/pages/PollPage.qml
-        qml/pages/MusicPage.qml
+        qml/pages/PointsPage.qml
         qml/pages/GifsPage.qml
         qml/pages/SocialPage.qml
         qml/pages/FaceitPage.qml
         qml/pages/Cs2Page.qml
         qml/pages/DotaPage.qml
+        qml/pages/GameBannerPage.qml
         qml/pages/MutedPage.qml
         qml/pages/SettingsPage.qml
         qml/pages/UpdatesPage.qml
@@ -103,7 +104,7 @@ target_compile_definitions(streamsoft_gui PRIVATE
     STREAMSOFT_TTS_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/tts"
     STREAMSOFT_RVC_ADAPTER_DIR="${CMAKE_SOURCE_DIR}/adapters/rvc"
     STREAMSOFT_YTDLP_PATH="${STREAMSOFT_YTDLP_PATH}"
-    STREAMSOFT_VERSION="1.0.19"
+    STREAMSOFT_VERSION="1.0.20"
     QT_NO_KEYWORDS
 )
 

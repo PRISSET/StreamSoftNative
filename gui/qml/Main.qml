@@ -200,8 +200,7 @@ ApplicationWindow {
             overlayPage.applySettings(data)
             voicePage.applySettings(data)
             mutedPage.applySettings(data)
-            musicPage.applySettings(data)
-            cs2Page.applySettings(data)
+            pointsPage.applySettings(data)
         })
     }
 
@@ -315,12 +314,10 @@ ApplicationWindow {
                                 { text: "Алерты и медиа", icon: "alerts" },
                                 { text: "Команды чата", icon: "commands" },
                                 { text: "Опрос", icon: "poll" },
-                                { text: "Музыка", icon: "music" },
+                                { text: "Баллы", icon: "points" },
                                 { text: "Гифки", icon: "gifs" },
                                 { text: "Соцсети", icon: "social" },
-                                { text: "Faceit", icon: "faceit" },
-                                { text: "CS2", icon: "cs2" },
-                                { text: "Dota 2", icon: "dota" },
+                                { text: "Игровой баннер", icon: "faceit" },
                                 { text: "Замьюченные", icon: "muted" },
                                 { text: "Настройки", icon: "settings" },
                                 { text: "Обновления", icon: "updates" }
@@ -381,12 +378,10 @@ ApplicationWindow {
                 AlertsPage { id: alertsPage; width: pageStack.width }
                 CommandsPage { id: commandsPage; width: pageStack.width }
                 PollPage { id: pollPage; width: pageStack.width }
-                MusicPage { id: musicPage; width: pageStack.width }
+                PointsPage { id: pointsPage; width: pageStack.width }
                 GifsPage { id: gifsPage; width: pageStack.width }
                 SocialPage { id: socialPage; width: pageStack.width }
-                FaceitPage { id: faceitPage; width: pageStack.width }
-                Cs2Page { id: cs2Page; width: pageStack.width }
-                DotaPage { id: dotaPage; width: pageStack.width }
+                GameBannerPage { id: gameBannerPage; width: pageStack.width }
                 MutedPage { id: mutedPage; width: pageStack.width }
                 SettingsPage { id: settingsPage; width: pageStack.width }
                 UpdatesPage { id: updatesPage; width: pageStack.width }
