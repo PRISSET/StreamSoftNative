@@ -8,6 +8,9 @@ ColumnLayout {
 
     property bool loading: false
     property var snapshot: ({ valid: false })
+    property var liveSnapshot: ({ active: false })
+    property string installStatus: ""
+    property bool installOk: false
 
     function load() {
         loading = true
@@ -25,14 +28,25 @@ ColumnLayout {
             dota_account_id: accountIdField.text,
             dota_enabled: enabledToggle.checked
         }, function (ok) {
-            statusText.text = ok ? "Сохранено, обновление придёт в течение пары минут." : "Не удалось сохранить."
+            statusText.text = ok ? "Сохранено." : "Не удалось сохранить."
             statusTimer.restart()
+        })
+    }
+
+    function installCfg() {
+        installStatus = "Устанавливаю…"
+        api.post("/api/dota/install-cfg", {}, function (ok, data) {
+            installOk = ok && data && data.ok
+            installStatus = installOk ? ("Готово: " + data.path) : ((data && data.error) ? data.error : "Не удалось установить")
         })
     }
 
     function refreshSnapshot() {
         api.get("/api/dota/snapshot", function (ok, data) {
             if (ok) root.snapshot = data
+        })
+        api.get("/api/dota/live", function (ok, data) {
+            if (ok) root.liveSnapshot = data
         })
     }
 
@@ -48,7 +62,7 @@ ColumnLayout {
     SectionHeader {
         Layout.fillWidth: true
         title: "Dota 2"
-        subtitle: "Тот же баннер на оверлее, что и Faceit — переключается на Dota сам, как только запущена dota2.exe вместо cs2.exe. Данные — из бесплатного OpenDota API."
+        subtitle: "Тот же баннер на оверлее, что и Faceit — переключается на Dota сам, как только запущена dota2.exe вместо cs2.exe."
     }
 
     GlassCard {
@@ -62,7 +76,7 @@ ColumnLayout {
             onEditingFinished: root.save()
         }
         Text {
-            text: "Число, а не Steam-ссылка и не ник — тот же ID, что виден в списке друзей в Dota 2 или в адресе профиля на opendota.com/players/<ID>."
+            text: "Опционально — число, а не Steam-ссылка и не ник (список друзей в Dota 2 или адрес профиля на opendota.com/players/<ID>). Нужно только для истории прошлых матчей; live-виджет ниже работает и без него."
             color: Theme.textFaint
             font.pixelSize: Theme.fontSm
             wrapMode: Text.WordWrap
@@ -70,6 +84,45 @@ ColumnLayout {
         }
 
         GlassToggle { id: enabledToggle; text: "Показывать виджет на оверлее"; onToggled: root.save() }
+    }
+
+    GlassCard {
+        Layout.fillWidth: true
+
+        SectionHeader {
+            Layout.fillWidth: true
+            title: "Live-матч (Game State Integration)"
+            subtitle: "Разовая настройка: кладём .cfg-файл в папку Dota 2 — дальше игра сама присылает герой/KDA/счёт прямо во время матча, в обход настроек приватности профиля."
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            PillButton {
+                text: "Установить конфиг в Dota 2"
+                onClicked: root.installCfg()
+            }
+            Item { Layout.fillWidth: true }
+        }
+
+        Text {
+            visible: installStatus.length > 0
+            text: installStatus
+            color: installOk ? Theme.good : Theme.bad
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            text: root.liveSnapshot.active
+                ? ("Матч сейчас идёт: " + (root.liveSnapshot.heroName || "?") + " · " + root.liveSnapshot.kills + "/" + root.liveSnapshot.deaths + "/" + root.liveSnapshot.assists + " · " + (root.liveSnapshot.radiantScore || 0) + ":" + (root.liveSnapshot.direScore || 0))
+                : "Сейчас матч не идёт (или Dota 2 не запущена / конфиг ещё не установлен)"
+            color: root.liveSnapshot.active ? Theme.good : Theme.textFaint
+            font.pixelSize: Theme.fontSm
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
     }
 
     GlassCard {

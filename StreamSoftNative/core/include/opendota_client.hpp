@@ -156,8 +156,23 @@ private:
 
         Snapshot snap;
         auto profile_resp = cli.Get(("/api/players/" + account_id).c_str());
-        if (!profile_resp || profile_resp->status != 200) {
-            set_error("OpenDota API недоступен (профиль)");
+        if (!profile_resp) {
+            set_error("OpenDota API недоступен (нет сети)");
+            return;
+        }
+        if (profile_resp->status == 404) {
+            // 404 here means OpenDota has never seen this account_id at all — not a service
+            // outage. Overwhelmingly this is because "Expose Public Match Data" (Dota 2
+            // client: Settings -> Social) is off, which is the default; Valve gates match
+            // data behind it for every third party, OpenDota included, so switching data
+            // sources would hit the same wall. The other possibility is a wrong account ID.
+            set_error("Аккаунт не найден в OpenDota. Проверь ID и включи в Dota 2 "
+                       "настройку \"Экспонировать данные публичных матчей\" "
+                       "(Настройки -> Соц. функции), затем сыграй матч");
+            return;
+        }
+        if (profile_resp->status != 200) {
+            set_error("OpenDota API недоступен (профиль, HTTP " + std::to_string(profile_resp->status) + ")");
             return;
         }
         auto profile = crow::json::load(profile_resp->body);

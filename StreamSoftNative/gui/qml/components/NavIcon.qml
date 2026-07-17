@@ -87,19 +87,6 @@ Canvas {
             ctx.moveTo(w - 5, h - 3)
             ctx.lineTo(w - 5, h - 11)
             ctx.stroke()
-        } else if (icon === "music") {
-            ctx.beginPath()
-            ctx.arc(6, h - 4.5, 2.2, 0, Math.PI * 2)
-            ctx.stroke()
-            ctx.beginPath()
-            ctx.arc(w - 6.5, h - 6.5, 2.2, 0, Math.PI * 2)
-            ctx.stroke()
-            ctx.beginPath()
-            ctx.moveTo(8.2, h - 4.5)
-            ctx.lineTo(8.2, 3)
-            ctx.lineTo(w - 4.3, 4.5)
-            ctx.lineTo(w - 4.3, h - 6.5)
-            ctx.stroke()
         } else if (icon === "social") {
             ctx.beginPath()
             ctx.moveTo(2.5, h / 2)
@@ -191,6 +178,13 @@ Canvas {
             ctx.beginPath()
             ctx.moveTo(w / 2, 2)
             ctx.lineTo(w / 2, h - 2)
+            ctx.stroke()
+        } else if (icon === "points") {
+            ctx.beginPath()
+            ctx.arc(w / 2 - 2, h / 2 + 2, 5.5, 0, Math.PI * 2)
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.arc(w / 2 + 3, h / 2 - 3, 5.5, 0, Math.PI * 2)
             ctx.stroke()
         } else if (icon === "updates") {
             ctx.beginPath()

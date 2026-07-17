@@ -99,6 +99,7 @@ inline void run_core() {
 
     dota::OpenDotaClient dota;
     overlay.set_dota_client(&dota);
+    overlay.set_dota_enabled(config.dota_enabled);
     if (config.should_run_dota()) dota.start(config.dota_account_id);
 
     std::mutex adapter_mutex;
