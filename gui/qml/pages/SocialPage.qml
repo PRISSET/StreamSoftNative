@@ -37,13 +37,11 @@ ColumnLayout {
         subtitle: "Автопостинг о начале стрима. Сейчас доступен только Telegram-канал — остальные площадки добавим позже."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Telegram-канал"
-            subtitle: "Публикация идёт через бота со страницы «Подключения» — токен здесь вводить не нужно."
-        }
+        settingsKey: "social_telegram"
+        title: "Telegram-канал"
+        subtitle: "Публикация идёт через бота со страницы «Подключения» — токен здесь вводить не нужно."
 
         RowLayout {
             Layout.fillWidth: true

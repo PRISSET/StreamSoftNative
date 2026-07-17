@@ -54,46 +54,24 @@ ColumnLayout {
 
     Repeater {
         model: root.releases
-        delegate: GlassCard {
+        delegate: CollapsibleCard {
             required property var modelData
             Layout.fillWidth: true
+            settingsKey: "updates_release_" + modelData.version
+            // Every release gets its own persisted collapse state (keyed by
+            // version) rather than a shared one — old changelog entries
+            // someone's already read stay collapsed while a freshly
+            // installed version's notes stay open.
+            title: modelData.version + (modelData.version === root.currentVersion ? "  (установлено)" : "")
+            subtitle: root.formatDate(modelData.published_at)
 
-            ColumnLayout {
+            Text {
                 Layout.fillWidth: true
-                spacing: 6
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Text {
-                        text: modelData.version
-                        color: Theme.text
-                        font.pixelSize: Theme.fontLg
-                        font.bold: true
-                    }
-                    Text {
-                        visible: modelData.version === root.currentVersion
-                        text: "(установлено)"
-                        color: Theme.good
-                        font.pixelSize: Theme.fontSm
-                    }
-                    Item { Layout.fillWidth: true }
-                    Text {
-                        text: root.formatDate(modelData.published_at)
-                        color: Theme.textFaint
-                        font.pixelSize: Theme.fontSm
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    visible: !!modelData.notes
-                    text: modelData.notes || ""
-                    color: Theme.textDim
-                    font.pixelSize: Theme.fontMd
-                    wrapMode: Text.WordWrap
-                }
+                visible: !!modelData.notes
+                text: modelData.notes || ""
+                color: Theme.textDim
+                font.pixelSize: Theme.fontMd
+                wrapMode: Text.WordWrap
             }
         }
     }

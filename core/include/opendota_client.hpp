@@ -114,7 +114,9 @@ private:
     void run(const std::string& account_id) {
         while (running_) {
             try {
-                if (heroes_.empty()) fetch_heroes();
+                if (heroes_.empty()) {
+                    fetch_heroes();
+                }
                 refresh(account_id);
             } catch (const std::exception& e) {
                 set_error(std::string("Ошибка опроса OpenDota: ") + e.what());

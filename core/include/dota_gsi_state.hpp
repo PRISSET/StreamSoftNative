@@ -183,6 +183,12 @@ public:
         return changed;
     }
 
+    bool is_active() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return !last_state_.empty() && last_state_ != "DOTA_GAMERULES_STATE_POST_GAME" &&
+               last_state_ != "DOTA_GAMERULES_STATE_DISCONNECT";
+    }
+
     crow::json::wvalue snapshot_json() {
         std::lock_guard<std::mutex> lock(mutex_);
         crow::json::wvalue j;

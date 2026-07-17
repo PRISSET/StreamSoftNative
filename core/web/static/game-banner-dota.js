@@ -55,7 +55,7 @@ window.GameBannerDota = (function () {
 
       const wl = document.createElement("div");
       wl.className = "wl";
-      wl.textContent = m.win ? "Победа" : "Поражение";
+      wl.textContent = m.win ? "W" : "L";
       text.appendChild(wl);
 
       if (m.kills >= 0 && m.deaths >= 0) {
@@ -115,8 +115,9 @@ window.GameBannerDota = (function () {
       document.getElementById("drank").textContent = data.rank_label || "—";
 
       const avatar = document.getElementById("davatar");
-      if (data.avatar) {
-        avatar.src = data.avatar;
+      const avatarUrl = window.StreamSoftCustomAvatarUrl || data.avatar;
+      if (avatarUrl) {
+        avatar.src = avatarUrl;
         avatar.classList.remove("hidden");
       } else {
         avatar.classList.add("hidden");

@@ -36,6 +36,7 @@ adapters/*_download_tmp/
 # Секреты — никогда не коммитить
 .env
 twitch_token.json
+youtube_token.json
 connections.json
 CLAUDE.md
 
@@ -51,4 +52,5 @@ qt/
 runtime_settings.json
 chat_commands.json
 points.json
+stream_templates.json
 core/web/media/

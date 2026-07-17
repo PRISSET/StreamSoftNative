@@ -65,8 +65,10 @@ ColumnLayout {
         subtitle: "Тот же баннер на оверлее, что и Faceit — переключается на Dota сам, как только запущена dota2.exe вместо cs2.exe."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "dota_accountId"
+        title: "Account ID и виджет"
 
         Text { text: "Dota Account ID (Friend ID)"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         GlassTextField {
@@ -86,14 +88,11 @@ ColumnLayout {
         GlassToggle { id: enabledToggle; text: "Показывать виджет на оверлее"; onToggled: root.save() }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Live-матч (Game State Integration)"
-            subtitle: "Разовая настройка: кладём .cfg-файл в папку Dota 2 — дальше игра сама присылает герой/KDA/счёт прямо во время матча, в обход настроек приватности профиля."
-        }
+        settingsKey: "dota_liveMatch"
+        title: "Live-матч (Game State Integration)"
+        subtitle: "Разовая настройка: кладём .cfg-файл в папку Dota 2 — дальше игра сама присылает герой/KDA/счёт прямо во время матча, в обход настроек приватности профиля."
 
         RowLayout {
             Layout.fillWidth: true
@@ -125,15 +124,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
         visible: root.snapshot.valid
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: root.snapshot.personaname || ""
-            subtitle: root.snapshot.rank_label ? ("Ранг: " + root.snapshot.rank_label) : "Ранг скрыт настройками приватности профиля"
-        }
+        settingsKey: "dota_livePreview"
+        title: root.snapshot.personaname || ""
+        subtitle: root.snapshot.rank_label ? ("Ранг: " + root.snapshot.rank_label) : "Ранг скрыт настройками приватности профиля"
 
         RowLayout {
             Layout.fillWidth: true

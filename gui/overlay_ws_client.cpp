@@ -41,6 +41,11 @@ void OverlayWsClient::start() {
             QString detail = obj.value("detail").toString();
             QMetaObject::invokeMethod(
                 this, [this, kind, user, detail] { Q_EMIT eventMessage(kind, user, detail); }, Qt::QueuedConnection);
+        } else if (type == "app_notice") {
+            QString title = obj.value("title").toString();
+            QString detail = obj.value("detail").toString();
+            QMetaObject::invokeMethod(
+                this, [this, title, detail] { Q_EMIT appNotice(title, detail); }, Qt::QueuedConnection);
         }
     });
 

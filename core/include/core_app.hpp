@@ -47,6 +47,11 @@ inline std::string event_speech(const std::string& kind, const std::string& user
     if (kind == "gift_sub") return user + " подарил подписки, " + detail;
     if (kind == "raid") return "Рейд от " + user + ", " + detail;
     if (kind == "cheer") return user + " задонатил битсами, " + detail;
+    if (kind == "youtube_sub") return user + " стал участником канала на YouTube, " + detail;
+    if (kind == "youtube_sub_milestone") return user + " отмечает участие на YouTube, " + detail;
+    if (kind == "youtube_gift_sub") return user + " подарил участие на YouTube, " + detail;
+    if (kind == "youtube_superchat") return user + " отправил Super Chat на YouTube, " + detail;
+    if (kind == "youtube_supersticker") return user + " отправил Super Sticker на YouTube, " + detail;
     return user + ": событие " + kind;
 }
 
@@ -100,7 +105,9 @@ inline void run_core() {
     dota::OpenDotaClient dota;
     overlay.set_dota_client(&dota);
     overlay.set_dota_enabled(config.dota_enabled);
-    if (config.should_run_dota()) dota.start(config.dota_account_id);
+    if (config.should_run_dota()) {
+        dota.start(config.dota_account_id);
+    }
 
     std::mutex adapter_mutex;
 
@@ -215,6 +222,7 @@ inline void run_core() {
                     [&overlay, &tts, &config, &faceit](const std::string& kind, const std::string& user,
                                                         const std::string& detail) {
                         if (kind == "stream_online") {
+                            overlay.broadcast_app_notice("Twitch", "Трансляция запущена");
                             if (config.should_run_faceit()) faceit.mark_stream_start();
                             if (config.should_post_social_telegram()) {
                                 std::string bot_token = config.telegram_bot_token;
@@ -227,6 +235,7 @@ inline void run_core() {
                             return;
                         }
                         if (kind == "stream_offline") {
+                            overlay.broadcast_app_notice("Twitch", "Трансляция завершена");
                             if (config.should_post_faceit_stats()) {
                                 auto summary = faceit.stream_end_summary();
                                 if (summary) {
@@ -255,7 +264,7 @@ inline void run_core() {
         workers.emplace_back([&overlay, &tts, &config] {
             supervise("youtube-chat", [&overlay, &tts, &config] {
                 youtube::watch_youtube(
-                    config.youtube_video_id, config.youtube_api_key,
+                    config.youtube_video_id, config.youtube_channel_id, config.youtube_api_key,
                     [&overlay, &tts, &config](const std::string& author, const std::string& text) {
                         if (overlay.is_muted(author)) return;
                         if (overlay.try_poll_vote(author, text)) return;
@@ -270,6 +279,29 @@ inline void run_core() {
                         if (config.should_run_telegram()) {
                             telegram::notify_chat(config.telegram_bot_token, config.telegram_chat_id, "youtube",
                                                    author, text);
+                        }
+                    },
+                    [&overlay](bool live, const std::string& video_id) {
+                        overlay.set_youtube_live(live, video_id);
+                        overlay.broadcast_app_notice("YouTube", live ? "Трансляция запущена" : "Трансляция завершена");
+                        // Reload fresh from disk rather than reusing the
+                        // startup-time `config` above — the user may have
+                        // saved a new stream_title since this process
+                        // started, and that's exactly the value a
+                        // just-started broadcast should pick up.
+                        if (live) {
+                            auto fresh = ConnectionsConfig::load();
+                            if (fresh.has_youtube_oauth() && !fresh.stream_title.empty()) {
+                                overlay.apply_youtube_title(fresh.stream_title);
+                            }
+                        }
+                    },
+                    config.youtube_oauth_client_id, config.youtube_oauth_client_secret,
+                    [&overlay, &tts, &config](const std::string& kind, const std::string& user, const std::string& detail) {
+                        overlay.broadcast_event(kind, user, detail);
+                        tts.say_event(event_speech(kind, user, detail));
+                        if (config.should_run_telegram()) {
+                            telegram::notify_event(config.telegram_bot_token, config.telegram_chat_id, kind, user, detail);
                         }
                     });
             });

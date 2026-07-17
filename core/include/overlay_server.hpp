@@ -31,6 +31,7 @@
 #include "moderation.hpp"
 #include "module_installer.hpp"
 #include "obs_client.hpp"
+#include "obs_multirtmp.hpp"
 #include "obs_scene_file.hpp"
 #include "opendota_client.hpp"
 #include "outgoing_queue.hpp"
@@ -38,11 +39,13 @@
 #include "poll.hpp"
 #include "process_watch.hpp"
 #include "song_queue.hpp"
+#include "stream_templates.hpp"
 #include "runtime_settings.hpp"
 #include "steam_paths.hpp"
 #include "telegram.hpp"
 #include "tts_worker.hpp"
 #include "twitch_auth.hpp"
+#include "youtube_auth.hpp"
 #include "yt_resolve.hpp"
 
 namespace streamsoft {
@@ -74,6 +77,61 @@ public:
         bool voted = poll_.try_vote(username, text);
         if (voted) broadcast_poll_update();
         return voted;
+    }
+
+    // Separate from broadcast_event()/alertStage — that pipeline is for
+    // viewer-facing on-stream alerts (follows/subs/raids). This is purely
+    // for the GUI's own corner toast (see gui/overlay_ws_client.cpp's
+    // "app_notice" handling), so it's a distinct WS message type the
+    // viewer-facing overlay pages simply don't recognize/render.
+    // Fire-and-forget, same pattern as the Twitch title-update call — only
+    // does anything if a broadcast is actually live right now (there's no
+    // "channel title" on YouTube the way Twitch has one; a video's title IS
+    // the broadcast's title, so with nothing live there's nothing to set).
+    void apply_youtube_title(const std::string& title) {
+        auto config = ConnectionsConfig::load();
+        if (!config.has_youtube_oauth()) return;
+        std::string video_id = current_youtube_video_id();
+        if (video_id.empty()) {
+            CROW_LOG_INFO << "YouTube: сейчас не в эфире, название обновится при следующем старте трансляции";
+            broadcast_app_notice("YouTube", "Сейчас не в эфире — название применится само при следующем старте трансляции");
+            return;
+        }
+        std::string client_id = config.youtube_oauth_client_id;
+        std::string client_secret = config.youtube_oauth_client_secret;
+        std::thread([this, client_id, client_secret, video_id, title] {
+            try {
+                std::string token = youtube_auth::get_access_token(client_id, client_secret);
+                bool applied = youtube_auth::update_video_title(token, video_id, title);
+                if (applied) {
+                    broadcast_app_notice("Название обновлено", "YouTube: " + title);
+                } else {
+                    broadcast_app_notice("YouTube", "Не удалось применить название — подробности в логе");
+                }
+            } catch (const std::exception& e) {
+                CROW_LOG_ERROR << "Не удалось применить название трансляции на YouTube: " << e.what();
+                broadcast_app_notice("YouTube", "Ошибка авторизации — попробуй «Войти заново» на странице Подключения");
+            }
+        }).detach();
+    }
+
+    void set_youtube_live(bool live, const std::string& video_id) {
+        youtube_live_ = live;
+        std::lock_guard<std::mutex> lock(youtube_live_video_mutex_);
+        youtube_live_video_id_ = video_id;
+    }
+
+    std::string current_youtube_video_id() {
+        std::lock_guard<std::mutex> lock(youtube_live_video_mutex_);
+        return youtube_live_video_id_;
+    }
+
+    void broadcast_app_notice(const std::string& title, const std::string& detail) {
+        crow::json::wvalue j;
+        j["type"] = "app_notice";
+        j["title"] = title;
+        j["detail"] = detail;
+        broadcast_raw(j.dump());
     }
 
     void broadcast_poll_update() {
@@ -593,7 +651,9 @@ private:
     // short enough that the widget doesn't stay stuck "live" for long after
     // the game actually stops reporting.
     static constexpr int kGsiStaleTimeoutSeconds = 90;
-    static constexpr std::array<const char*, 5> kEventKinds = {"follow", "subscribe", "gift_sub", "raid", "cheer"};
+    static constexpr std::array<const char*, 10> kEventKinds = {
+        "follow", "subscribe", "gift_sub", "raid", "cheer",
+        "youtube_sub", "youtube_sub_milestone", "youtube_gift_sub", "youtube_superchat", "youtube_supersticker"};
     static constexpr std::array<const char*, 2> kMediaExts = {"gif", "mp3"};
 
     static bool is_known_kind(const std::string& kind) {
@@ -678,6 +738,34 @@ private:
             return serve_file(web_dir_ / "static", filename);
         });
 
+        // The faceit widget's downloaded assets (level icons, country flags,
+        // region icons, Stratum2 font) live under static/faceit-assets/* and
+        // static/fonts/ — one nesting level deeper than plain /static/<string>
+        // reaches, so each subdirectory gets its own <string> route (same
+        // is_safe_segment-guarded pattern as everywhere else in this file,
+        // e.g. /api/gifs/<string>/<string>) rather than a single-segment
+        // <path> catch-all.
+        CROW_ROUTE(app_, "/static/faceit-assets/levels/<string>")
+        ([this](const std::string& filename) {
+            if (!is_safe_segment(filename)) return crow::response(404);
+            return serve_file(web_dir_ / "static" / "faceit-assets" / "levels", filename);
+        });
+        CROW_ROUTE(app_, "/static/faceit-assets/flags/<string>")
+        ([this](const std::string& filename) {
+            if (!is_safe_segment(filename)) return crow::response(404);
+            return serve_file(web_dir_ / "static" / "faceit-assets" / "flags", filename);
+        });
+        CROW_ROUTE(app_, "/static/faceit-assets/regions/<string>")
+        ([this](const std::string& filename) {
+            if (!is_safe_segment(filename)) return crow::response(404);
+            return serve_file(web_dir_ / "static" / "faceit-assets" / "regions", filename);
+        });
+        CROW_ROUTE(app_, "/static/fonts/<string>")
+        ([this](const std::string& filename) {
+            if (!is_safe_segment(filename)) return crow::response(404);
+            return serve_file(web_dir_ / "static" / "fonts", filename);
+        });
+
         CROW_ROUTE(app_, "/media/<string>")
         ([this](const std::string& filename) {
             if (!is_safe_segment(filename)) return crow::response(404);
@@ -697,8 +785,146 @@ private:
         setup_gifs_routes();
         setup_faceit_routes();
         setup_cs2_routes();
+        setup_status_routes();
+        setup_stream_template_routes();
         setup_test_routes();
         setup_ws_route();
+    }
+
+    // Named title/category presets ("Играем в CS2") applied with one click
+    // instead of retyping the stream title (and Twitch category) by hand —
+    // see stream_templates.hpp. Twitch gets both title and category in one
+    // Helix call; YouTube only has the plain title field (see
+    // "Название трансляции" on Connections) until it has its own OAuth —
+    // the free API key this app uses for chat can't write anything.
+    void setup_stream_template_routes() {
+        CROW_ROUTE(app_, "/api/stream-templates")
+            .methods(crow::HTTPMethod::Get)([this](const crow::request&) {
+                crow::json::wvalue resp;
+                resp["templates"] = stream_templates_.list();
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/stream-templates")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                if (!body) return crow::response(400, R"({"ok": false, "error": "bad json"})");
+                std::string name = body.has("name") ? std::string(body["name"].s()) : "";
+                std::string title = body.has("title") ? std::string(body["title"].s()) : "";
+                std::string game = body.has("twitch_game") ? std::string(body["twitch_game"].s()) : "";
+                if (name.empty()) return crow::response(400, R"({"ok": false, "error": "Название шаблона обязательно"})");
+                stream_templates_.add(name, title, game);
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                resp["templates"] = stream_templates_.list();
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/stream-templates/<string>")
+            .methods(crow::HTTPMethod::Delete)([this](const std::string& id) {
+                stream_templates_.remove(id);
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                resp["templates"] = stream_templates_.list();
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/stream-templates/<string>/apply")
+            .methods(crow::HTTPMethod::Post)([this](const std::string& id) {
+                auto tmpl = stream_templates_.find(id);
+                if (!tmpl) return crow::response(404, R"({"ok": false, "error": "Шаблон не найден"})");
+
+                ConnectionsConfig config;
+                {
+                    std::lock_guard<std::mutex> lock(connections_mutex_);
+                    config = ConnectionsConfig::load();
+                    config.stream_title = tmpl->title;
+                    config.save();
+                }
+
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                resp["applied_twitch"] = config.has_twitch();
+
+                if (config.has_twitch()) {
+                    std::string client_id = config.twitch_client_id;
+                    std::string channel = config.twitch_channel;
+                    std::string title = tmpl->title;
+                    std::string game = tmpl->twitch_game;
+                    std::thread([this, client_id, channel, title, game] {
+                        try {
+                            std::string token = twitch::get_access_token(client_id);
+                            std::string broadcaster_id = twitch::get_user_id(client_id, token, channel);
+                            std::string game_id;
+                            if (!game.empty()) {
+                                auto gid = twitch::get_game_id(client_id, token, game);
+                                if (gid) game_id = *gid;
+                            }
+                            bool applied = twitch::update_channel_info(client_id, token, broadcaster_id, title, game_id);
+                            if (applied) {
+                                broadcast_app_notice("Название обновлено",
+                                                      "Twitch: " + title + (game_id.empty() ? "" : (" · " + game)));
+                            } else {
+                                broadcast_app_notice("Twitch", "Не удалось применить шаблон — подробности в логе");
+                            }
+                        } catch (const std::exception& e) {
+                            CROW_LOG_ERROR << "Не удалось применить шаблон трансляции на Twitch: " << e.what();
+                            broadcast_app_notice("Twitch", "Ошибка авторизации — попробуй «Переавторизовать Twitch» на странице Подключения");
+                        }
+                    }).detach();
+                }
+
+                resp["applied_youtube"] = config.has_youtube_oauth();
+                if (config.has_youtube_oauth()) apply_youtube_title(tmpl->title);
+
+                return crow::response(resp.dump());
+            });
+    }
+
+    // One place that answers "is X actually working right now" for every
+    // connection/integration — added because the multistream card in
+    // particular left the user unsure whether it was really live or not.
+    // Pulls from state this file already tracks (GSI snapshots, process
+    // watch, multirtmp status) rather than adding new tracking of its own.
+    void setup_status_routes() {
+        CROW_ROUTE(app_, "/api/status/overview")
+        ([this] {
+            auto config = ConnectionsConfig::load();
+            auto multi = streamsoft::obs::multirtmp::read_status(config);
+
+            crow::json::wvalue resp;
+
+            resp["twitch"]["configured"] = config.has_twitch();
+            resp["twitch"]["chat_enabled"] = config.should_run_twitch_chat();
+            resp["twitch"]["alerts_enabled"] = config.should_run_twitch_eventsub();
+
+            resp["youtube"]["configured"] = config.has_youtube();
+            resp["youtube"]["enabled"] = config.should_run_youtube();
+            resp["youtube"]["auto_detect"] = !config.youtube_channel_id.empty() && config.youtube_video_id.empty();
+            // Real "is a live chat actually connected right now", not just
+            // "is it configured" — enabled alone used to show green even
+            // with nothing actually connected.
+            resp["youtube"]["live"] = youtube_live_.load();
+
+            resp["telegram"]["configured"] = config.has_telegram();
+            resp["telegram"]["enabled"] = config.should_run_telegram();
+
+            resp["obs"]["running"] = streamsoft::obs::is_obs_running();
+            resp["obs"]["ever_connected"] = config.obs_connected;
+
+            resp["multistream"]["enabled"] = config.should_run_multistream();
+            resp["multistream"]["plugin_installed"] = multi.plugin_installed;
+            resp["multistream"]["synced"] = multi.synced;
+
+            resp["active_game"] = decide_active_game();
+            resp["cs2_live"] = gsi_.is_active();
+            resp["dota_live"] = dota_gsi_.is_active();
+            resp["tts_enabled"] = config.tts_enabled;
+
+            crow::response res(resp.dump());
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
     }
 
     void setup_connections_routes() {
@@ -724,6 +950,11 @@ private:
                     c.twitch_eventsub_enabled = body["twitch_eventsub_enabled"].b();
                 if (body.has("youtube_api_key")) c.youtube_api_key = std::string(body["youtube_api_key"].s());
                 if (body.has("youtube_video_id")) c.youtube_video_id = std::string(body["youtube_video_id"].s());
+                if (body.has("youtube_channel_id")) c.youtube_channel_id = std::string(body["youtube_channel_id"].s());
+                if (body.has("youtube_oauth_client_id"))
+                    c.youtube_oauth_client_id = std::string(body["youtube_oauth_client_id"].s());
+                if (body.has("youtube_oauth_client_secret"))
+                    c.youtube_oauth_client_secret = std::string(body["youtube_oauth_client_secret"].s());
                 if (body.has("youtube_enabled")) c.youtube_enabled = body["youtube_enabled"].b();
                 if (body.has("telegram_bot_token")) c.telegram_bot_token = std::string(body["telegram_bot_token"].s());
                 if (body.has("telegram_chat_id")) c.telegram_chat_id = std::string(body["telegram_chat_id"].s());
@@ -748,6 +979,47 @@ private:
                     } else {
                         dota_->stop();
                     }
+                }
+                if (body.has("multistream_label")) c.multistream_label = std::string(body["multistream_label"].s());
+                if (body.has("multistream_server")) c.multistream_server = std::string(body["multistream_server"].s());
+                if (body.has("multistream_key")) c.multistream_key = std::string(body["multistream_key"].s());
+                if (body.has("multistream_enabled")) c.multistream_enabled = body["multistream_enabled"].b();
+                if (body.has("stream_title")) {
+                    std::string new_title = std::string(body["stream_title"].s());
+                    // The whole form is re-posted on every single field edit
+                    // (see ConnectionsPage.qml's save()), so stream_title is
+                    // present in literally every request — only actually hit
+                    // Twitch's API when the title itself changed, not on
+                    // every unrelated keystroke elsewhere on the page.
+                    bool title_changed = new_title != c.stream_title;
+                    c.stream_title = new_title;
+                    // Twitch's channel-title update needs a real API call
+                    // (unlike everything else on this page, which is just a
+                    // local settings write) — fire-and-forget on a
+                    // background thread so a slow/erroring Twitch API call
+                    // (or a first-time re-auth prompt, see kScopes in
+                    // twitch_auth.hpp) never blocks this request.
+                    if (title_changed && c.has_twitch() && !c.stream_title.empty()) {
+                        std::string client_id = c.twitch_client_id;
+                        std::string channel = c.twitch_channel;
+                        std::string title = c.stream_title;
+                        std::thread([this, client_id, channel, title] {
+                            try {
+                                std::string token = twitch::get_access_token(client_id);
+                                std::string broadcaster_id = twitch::get_user_id(client_id, token, channel);
+                                bool applied = twitch::update_channel_title(client_id, token, broadcaster_id, title);
+                                if (applied) {
+                                    broadcast_app_notice("Название обновлено", "Twitch: " + title);
+                                } else {
+                                    broadcast_app_notice("Twitch", "Не удалось обновить название — подробности в логе");
+                                }
+                            } catch (const std::exception& e) {
+                                CROW_LOG_ERROR << "Не удалось применить название трансляции на Twitch: " << e.what();
+                                broadcast_app_notice("Twitch", "Ошибка авторизации — попробуй «Переавторизовать Twitch» на странице Подключения");
+                            }
+                        }).detach();
+                    }
+                    if (title_changed && c.has_youtube_oauth() && !c.stream_title.empty()) apply_youtube_title(c.stream_title);
                 }
                 if (faceit_ && (body.has("faceit_nickname") || body.has("faceit_api_key") || body.has("faceit_enabled"))) {
                     if (c.should_run_faceit()) {
@@ -840,6 +1112,56 @@ private:
                 std::thread(streamsoft::twitch::run_manual_auth, client_id).detach();
                 return crow::response(R"({"ok": true})");
             });
+
+        CROW_ROUTE(app_, "/api/youtube/auth-status")
+            .methods(crow::HTTPMethod::Get)([](const crow::request&) {
+                auto& s = streamsoft::youtube_auth::auth_prompt_state();
+                std::lock_guard<std::mutex> lock(s.mutex);
+                crow::json::wvalue resp;
+                resp["pending"] = s.pending;
+                resp["verification_url"] = s.verification_url;
+                resp["user_code"] = s.user_code;
+                resp["last_result"] = s.last_result;
+                resp["last_error"] = s.last_error;
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/youtube/start-auth")
+            .methods(crow::HTTPMethod::Post)([](const crow::request&) {
+                auto c = ConnectionsConfig::load();
+                if (!c.has_youtube_oauth()) {
+                    return crow::response(400, R"({"ok": false, "error": "no client_id/secret"})");
+                }
+                {
+                    auto& s = streamsoft::youtube_auth::auth_prompt_state();
+                    std::lock_guard<std::mutex> lock(s.mutex);
+                    s.last_result.clear();
+                    s.last_error.clear();
+                }
+                std::thread(streamsoft::youtube_auth::run_manual_auth, c.youtube_oauth_client_id,
+                            c.youtube_oauth_client_secret)
+                    .detach();
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/youtube/reauth")
+            .methods(crow::HTTPMethod::Post)([](const crow::request&) {
+                auto c = ConnectionsConfig::load();
+                if (!c.has_youtube_oauth()) {
+                    return crow::response(400, R"({"ok": false, "error": "no client_id/secret"})");
+                }
+                streamsoft::youtube_auth::invalidate_cached_token();
+                {
+                    auto& s = streamsoft::youtube_auth::auth_prompt_state();
+                    std::lock_guard<std::mutex> lock(s.mutex);
+                    s.last_result.clear();
+                    s.last_error.clear();
+                }
+                std::thread(streamsoft::youtube_auth::run_manual_auth, c.youtube_oauth_client_id,
+                            c.youtube_oauth_client_secret)
+                    .detach();
+                return crow::response(R"({"ok": true})");
+            });
     }
 
     void setup_obs_routes() {
@@ -883,6 +1205,38 @@ private:
                 resp["ok"] = true;
                 return crow::response(resp.dump());
             });
+
+        // A "StreamSoft Faceit" browser source that's already open in OBS
+        // keeps running whatever HTML/CSS/JS it loaded originally — editing
+        // the files on disk (new theme, new layout, whatever) doesn't touch
+        // an already-loaded CEF tab, only a future/fresh source load. This
+        // is the one-click equivalent of the source's own right-click
+        // "Refresh cache of current page" (FaceitPage.qml's theme/shape/
+        // avatar card), so widget-appearance changes actually show up
+        // without the user having to go find that menu in OBS themselves.
+        CROW_ROUTE(app_, "/api/obs/refresh-faceit")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string password = (body && body.has("password")) ? std::string(body["password"].s()) : "";
+                std::string host = (body && body.has("host")) ? std::string(body["host"].s()) : "127.0.0.1";
+                int port = (body && body.has("port")) ? static_cast<int>(body["port"].i()) : 4455;
+
+                streamsoft::obs::ObsClient client;
+                try {
+                    client.connect(host, port, password);
+                    client.refresh_source("StreamSoft Faceit");
+                    client.disconnect();
+                } catch (const std::exception& e) {
+                    crow::json::wvalue resp;
+                    resp["ok"] = false;
+                    resp["error"] = e.what();
+                    return crow::response(resp.dump());
+                }
+
+                crow::json::wvalue resp;
+                resp["ok"] = true;
+                return crow::response(resp.dump());
+            });
     }
 
     void setup_settings_routes() {
@@ -900,6 +1254,8 @@ private:
                 {
                     std::lock_guard<std::mutex> lock(runtime_mutex_);
                     if (body.has("theme")) runtime_.theme = std::string(body["theme"].s());
+                    if (body.has("banner_theme")) runtime_.banner_theme = std::string(body["banner_theme"].s());
+                    if (body.has("banner_shape")) runtime_.banner_shape = std::string(body["banner_shape"].s());
                     if (body.has("tts_voice_ru")) {
                         runtime_.tts_voice_ru = std::string(body["tts_voice_ru"].s());
                         if (tts_) tts_->set_voice_ru(runtime_.tts_voice_ru);
@@ -995,6 +1351,7 @@ private:
                 }
                 status[kind] = std::move(exts);
             }
+            status["banner_avatar_url"] = current_banner_avatar_url();
             return crow::response(status.dump());
         });
 
@@ -1020,6 +1377,58 @@ private:
                 std::filesystem::remove(media_dir_ / (kind + "." + ext), ec);
                 return crow::response(R"({"ok": true})");
             });
+
+        // Custom avatar for the Faceit/Dota OBS banner (FaceitPage.qml's
+        // "Своя картинка" slot) — separate from the alert-gif/mp3 media
+        // above since it's a single image, not one-per-event-kind, and can
+        // be any of a few image extensions rather than a fixed gif/mp3 pair.
+        // Only one file is kept at a time: uploading clears any sibling
+        // extension from a previous upload first, so a stale file never
+        // lingers and gets picked up by current_banner_avatar_url().
+        CROW_ROUTE(app_, "/api/banner-avatar/<string>")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req, const std::string& ext) {
+                if (!is_known_avatar_ext(ext)) {
+                    return crow::response(400, R"({"ok": false, "error": "bad ext"})");
+                }
+                if (req.body.empty()) {
+                    return crow::response(400, R"({"ok": false, "error": "empty file"})");
+                }
+                for (auto e : kAvatarExts) {
+                    std::error_code ec;
+                    std::filesystem::remove(media_dir_ / (std::string("banner_avatar.") + e), ec);
+                }
+                std::ofstream f(media_dir_ / ("banner_avatar." + ext), std::ios::binary | std::ios::trunc);
+                f << req.body;
+                broadcast_config();
+                return crow::response(R"({"ok": true})");
+            });
+
+        CROW_ROUTE(app_, "/api/banner-avatar")
+            .methods(crow::HTTPMethod::Delete)([this] {
+                for (auto e : kAvatarExts) {
+                    std::error_code ec;
+                    std::filesystem::remove(media_dir_ / (std::string("banner_avatar.") + e), ec);
+                }
+                broadcast_config();
+                return crow::response(R"({"ok": true})");
+            });
+    }
+
+    static constexpr std::array<const char*, 4> kAvatarExts = {"png", "jpg", "jpeg", "webp"};
+
+    static bool is_known_avatar_ext(const std::string& ext) {
+        for (auto e : kAvatarExts)
+            if (ext == e) return true;
+        return false;
+    }
+
+    std::string current_banner_avatar_url() const {
+        for (auto e : kAvatarExts) {
+            if (std::filesystem::exists(media_dir_ / (std::string("banner_avatar.") + e))) {
+                return "/media/banner_avatar." + std::string(e);
+            }
+        }
+        return "";
     }
 
     bool gif_file_exists(const std::string& name, const char* ext) const {
@@ -1210,6 +1619,72 @@ private:
                 crow::json::wvalue resp;
                 resp["ok"] = ok;
                 resp["enabled"] = ok ? want : autostart_is_enabled();
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/multistream/services")
+        ([] {
+            auto services = streamsoft::obs::multirtmp::list_known_services();
+            std::vector<crow::json::wvalue> arr;
+            for (const auto& s : services) {
+                crow::json::wvalue j;
+                j["name"] = s.name;
+                j["server"] = s.server;
+                j["key_link"] = s.key_link;
+                j["common"] = s.common;
+                arr.push_back(std::move(j));
+            }
+            crow::json::wvalue resp;
+            resp["services"] = std::move(arr);
+            return crow::response(resp.dump());
+        });
+
+        CROW_ROUTE(app_, "/api/multistream/fetch-key")
+            .methods(crow::HTTPMethod::Post)([](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string service_name = (body && body.has("service")) ? std::string(body["service"].s()) : "";
+                crow::json::wvalue resp;
+                if (service_name.empty()) {
+                    resp["found"] = false;
+                    return crow::response(resp.dump());
+                }
+                std::string key = streamsoft::obs::multirtmp::find_matching_stream_key(service_name);
+                resp["found"] = !key.empty();
+                resp["key"] = key;
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/multistream/status")
+        ([this] {
+            auto config = ConnectionsConfig::load();
+            auto status = streamsoft::obs::multirtmp::read_status(config);
+            crow::json::wvalue resp;
+            resp["plugin_installed"] = status.plugin_installed;
+            resp["obs_running"] = status.obs_running;
+            resp["profile_found"] = status.profile_found;
+            resp["profile_name"] = status.profile_name;
+            resp["synced"] = status.synced;
+            crow::response res(resp.dump());
+            res.set_header("Cache-Control", "no-store");
+            return res;
+        });
+
+        CROW_ROUTE(app_, "/api/multistream/install-plugin")
+            .methods(crow::HTTPMethod::Post)([](const crow::request&) {
+                auto result = streamsoft::obs::multirtmp::install_plugin();
+                crow::json::wvalue resp;
+                resp["ok"] = result.ok;
+                resp["error"] = result.error;
+                return crow::response(resp.dump());
+            });
+
+        CROW_ROUTE(app_, "/api/multistream/sync")
+            .methods(crow::HTTPMethod::Post)([](const crow::request&) {
+                auto config = ConnectionsConfig::load();
+                auto result = streamsoft::obs::multirtmp::sync_targets(config);
+                crow::json::wvalue resp;
+                resp["ok"] = result.ok;
+                resp["error"] = result.error;
                 return crow::response(resp.dump());
             });
     }
@@ -1593,6 +2068,20 @@ private:
                 broadcast_event(kind, "TestUser", "");
                 return crow::response(R"({"ok": true})");
             });
+
+        // Lets the corner-notification pipeline (broadcast_app_notice ->
+        // gui/overlay_ws_client.cpp -> Main.qml's appNoticeStack) be
+        // verified without waiting for a real Twitch EventSub stream.online
+        // or an actual YouTube broadcast to go live.
+        CROW_ROUTE(app_, "/api/test-app-notice")
+            .methods(crow::HTTPMethod::Post)([this](const crow::request& req) {
+                auto body = crow::json::load(req.body);
+                std::string title = (body && body.has("title")) ? std::string(body["title"].s()) : std::string("Test");
+                std::string detail =
+                    (body && body.has("detail")) ? std::string(body["detail"].s()) : std::string("Тестовое уведомление");
+                broadcast_app_notice(title, detail);
+                return crow::response(R"({"ok": true})");
+            });
     }
 
     void setup_ws_route() {
@@ -1641,6 +2130,9 @@ private:
         crow::json::wvalue j;
         j["type"] = "config";
         j["theme"] = runtime_.theme;
+        j["bannerTheme"] = runtime_.banner_theme;
+        j["bannerShape"] = runtime_.banner_shape;
+        j["bannerAvatarUrl"] = current_banner_avatar_url();
         j["eventVolume"] = runtime_.event_volume / 100.0;
         j["chatScale"] = runtime_.chat_scale;
         j["alertScale"] = runtime_.alert_scale;
@@ -1682,6 +2174,9 @@ private:
         if (ext == ".mp3") return "audio/mpeg";
         if (ext == ".mp4") return "video/mp4";
         if (ext == ".webm") return "video/webm";
+        if (ext == ".svg") return "image/svg+xml";
+        if (ext == ".woff") return "font/woff";
+        if (ext == ".woff2") return "font/woff2";
         return "application/octet-stream";
     }
 
@@ -1701,6 +2196,7 @@ private:
     RuntimeSettings runtime_;
     ModerationState moderation_;
     CommandsStore commands_;
+    StreamTemplateStore stream_templates_;
     PollState poll_;
     PointsStore points_;
     SongQueue song_queue_;
@@ -1708,6 +2204,14 @@ private:
     faceit::FaceitClient* faceit_ = nullptr;
     dota::OpenDotaClient* dota_ = nullptr;
     std::atomic<bool> dota_widget_enabled_{false};
+    // Real connection state, not just "is it configured" — the status
+    // panel showing green here used to just mirror should_run_youtube(),
+    // which stayed green even with zero actual live chat connected and
+    // nothing arriving, exactly the "says it's fine but nothing works"
+    // confusion the status panel was supposed to prevent.
+    std::atomic<bool> youtube_live_{false};
+    std::mutex youtube_live_video_mutex_;
+    std::string youtube_live_video_id_;
     ProcessWatcher process_watch_;
     cs2::GsiState gsi_;
     dota::DotaGsiState dota_gsi_;

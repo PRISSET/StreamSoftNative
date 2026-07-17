@@ -19,6 +19,8 @@ inline std::string generate_gsi_token() {
 
 struct RuntimeSettings {
     std::string theme = "minimal";
+    std::string banner_theme = "milk";
+    std::string banner_shape = "landscape";
     std::string tts_voice_ru = "ru-RU-DmitryNeural";
     std::string tts_voice_en = "en-US-GuyNeural";
     std::string tts_rate = "+0%";
@@ -62,6 +64,8 @@ struct RuntimeSettings {
             auto j = crow::json::load(ss.str());
             if (j) {
                 if (j.has("theme")) s.theme = std::string(j["theme"].s());
+                if (j.has("banner_theme")) s.banner_theme = std::string(j["banner_theme"].s());
+                if (j.has("banner_shape")) s.banner_shape = std::string(j["banner_shape"].s());
                 if (j.has("tts_voice_ru")) s.tts_voice_ru = std::string(j["tts_voice_ru"].s());
                 if (j.has("tts_voice_en")) s.tts_voice_en = std::string(j["tts_voice_en"].s());
                 if (j.has("tts_rate")) s.tts_rate = std::string(j["tts_rate"].s());
@@ -112,6 +116,8 @@ struct RuntimeSettings {
     crow::json::wvalue to_json() const {
         crow::json::wvalue j;
         j["theme"] = theme;
+        j["banner_theme"] = banner_theme;
+        j["banner_shape"] = banner_shape;
         j["tts_voice_ru"] = tts_voice_ru;
         j["tts_voice_en"] = tts_voice_en;
         j["tts_rate"] = tts_rate;

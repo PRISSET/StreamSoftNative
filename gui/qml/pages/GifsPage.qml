@@ -46,8 +46,10 @@ ColumnLayout {
         subtitle: "Зритель тратит баллы командой \"!gif <имя>\" — на оверлее проигрывается гифка и/или звук поверх алертов. Список — \"!gifs\"."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "gifs_add"
+        title: "Добавить гифку"
 
         RowLayout {
             Layout.fillWidth: true
@@ -99,8 +101,10 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "gifs_list"
+        title: "Список"
 
         Text {
             visible: root.gifs.length === 0

@@ -24,7 +24,8 @@ namespace streamsoft::twitch {
 inline const std::string kAuthHost = "https://id.twitch.tv";
 inline const std::string kApiHost = "https://api.twitch.tv";
 inline const std::string kScopes =
-    "chat:read chat:edit moderator:read:followers channel:read:subscriptions bits:read clips:edit";
+    "chat:read chat:edit moderator:read:followers channel:read:subscriptions bits:read clips:edit "
+    "channel:manage:broadcast";
 
 struct AuthPromptState {
     std::mutex mutex;
@@ -78,7 +79,24 @@ inline void invalidate_cached_token() { std::remove(kTokenFile.c_str()); }
 // that path and made verification fail (as "connection unavailable") on any
 // machine doing HTTPS inspection. Fall back to the bundled cacert.pem only
 // when built against an older cpp-httplib that lacks the Windows check.
+// httplib::Client's constructor sets up its SSL context, which — at least
+// on this build (cpp-httplib + the bundled OpenSSL via vcpkg) — isn't safe
+// to race from multiple threads on their very first call. This never
+// tripped before because only one background client (Faceit's) did an
+// early concurrent HTTPS call at startup; adding the Dota/OpenDota client
+// meant two threads now construct their first httplib::Client at nearly
+// the same moment, and that's what turned a latent race into a reliable
+// STATUS_STACK_BUFFER_OVERRUN crash within the first second of startup.
+// Serializing just the construction (not the actual request I/O) is a
+// cheap, safe fix regardless of which exact internal call is the real
+// race — client construction is infrequent (once per poll cycle at most).
+inline std::mutex& https_client_construction_mutex() {
+    static std::mutex m;
+    return m;
+}
+
 inline httplib::Client make_https_client(const std::string& host) {
+    std::lock_guard<std::mutex> lock(https_client_construction_mutex());
     httplib::Client cli(host);
     cli.enable_server_certificate_verification(true);
 #ifndef CPPHTTPLIB_WINDOWS_AUTOMATIC_ROOT_CERTIFICATES_UPDATE
@@ -298,6 +316,58 @@ inline std::string get_user_id(const std::string& client_id, const std::string& 
         throw std::runtime_error("Не удалось получить id канала " + login + ": пустой ответ");
     }
     return std::string(data["data"][0]["id"].s());
+}
+
+// Resolves a free-text game/category name (as typed into a stream template)
+// to the Twitch game_id Modify Channel Information actually needs — Helix
+// matches by exact name, so "CS2" won't find "Counter-Strike", the game has
+// to be typed the way Twitch itself lists it (same as picking it from the
+// category search box on twitch.tv).
+inline std::optional<std::string> get_game_id(const std::string& client_id, const std::string& access_token,
+                                               const std::string& game_name) {
+    if (game_name.empty()) return std::nullopt;
+    auto api = make_https_client(kApiHost);
+    httplib::Headers headers{{"Client-Id", client_id}, {"Authorization", "Bearer " + access_token}};
+
+    auto resp = api.Get(("/helix/games?name=" + url_encode(game_name)).c_str(), headers);
+    if (!resp || resp->status != 200) {
+        CROW_LOG_WARNING << "Не удалось найти категорию Twitch \"" << game_name << "\": "
+                          << (resp ? std::to_string(resp->status) + " " + resp->body : "нет ответа");
+        return std::nullopt;
+    }
+    auto data = crow::json::load(resp->body);
+    if (!data || !data.has("data") || data["data"].size() == 0) {
+        CROW_LOG_WARNING << "Категория Twitch \"" << game_name << "\" не найдена";
+        return std::nullopt;
+    }
+    return std::string(data["data"][0]["id"].s());
+}
+
+// game_id is optional — pass an empty string to leave the channel's current
+// category untouched and only change the title (what stream_title alone,
+// outside of a template, does).
+inline bool update_channel_info(const std::string& client_id, const std::string& access_token,
+                                 const std::string& broadcaster_id, const std::string& title,
+                                 const std::string& game_id = "") {
+    auto api = make_https_client(kApiHost);
+    httplib::Headers headers{{"Client-Id", client_id}, {"Authorization", "Bearer " + access_token}};
+
+    crow::json::wvalue body;
+    body["title"] = title;
+    if (!game_id.empty()) body["game_id"] = game_id;
+    auto resp = api.Patch(("/helix/channels?broadcaster_id=" + url_encode(broadcaster_id)).c_str(), headers,
+                           body.dump(), "application/json");
+    if (!resp || resp->status != 204) {
+        CROW_LOG_WARNING << "Не удалось обновить название/категорию трансляции Twitch: "
+                          << (resp ? std::to_string(resp->status) + " " + resp->body : "нет ответа");
+        return false;
+    }
+    return true;
+}
+
+inline bool update_channel_title(const std::string& client_id, const std::string& access_token,
+                                  const std::string& broadcaster_id, const std::string& title) {
+    return update_channel_info(client_id, access_token, broadcaster_id, title);
 }
 
 inline std::optional<std::string> create_clip(const std::string& client_id, const std::string& access_token,

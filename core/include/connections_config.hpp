@@ -48,7 +48,15 @@ struct ConnectionsConfig {
 
     std::string youtube_api_key;
     std::string youtube_video_id;
+    std::string youtube_channel_id;
     bool youtube_enabled = true;
+
+    // Separate from youtube_api_key — that one is a plain API key, only
+    // good for read-only calls (chat). Updating a live broadcast's title
+    // needs a real user OAuth token, hence its own client id/secret pair
+    // (see youtube_auth.hpp).
+    std::string youtube_oauth_client_id;
+    std::string youtube_oauth_client_secret;
 
     std::string telegram_bot_token;
     std::string telegram_chat_id;
@@ -66,6 +74,13 @@ struct ConnectionsConfig {
     std::string dota_account_id;
     bool dota_enabled = false;
 
+    std::string multistream_label = "Вторая площадка";
+    std::string multistream_server;
+    std::string multistream_key;
+    bool multistream_enabled = false;
+
+    std::string stream_title;
+
     bool tts_enabled = true;
     int tts_max_chars = 200;
 
@@ -74,7 +89,14 @@ struct ConnectionsConfig {
     static constexpr const char* kFile = "connections.json";
 
     bool has_twitch() const { return !twitch_client_id.empty() && !twitch_channel.empty(); }
-    bool has_youtube() const { return !youtube_api_key.empty() && !youtube_video_id.empty(); }
+    // A fixed video id keeps working for a single broadcast the way it
+    // always has; a channel id lets watch_youtube() (youtube_chat.hpp)
+    // resolve whichever broadcast is currently live on its own, so nobody
+    // has to paste in a new video id before every single stream.
+    bool has_youtube() const {
+        return !youtube_api_key.empty() && (!youtube_video_id.empty() || !youtube_channel_id.empty());
+    }
+    bool has_youtube_oauth() const { return !youtube_oauth_client_id.empty() && !youtube_oauth_client_secret.empty(); }
     bool has_telegram() const { return !telegram_bot_token.empty() && !telegram_chat_id.empty(); }
     bool has_social_telegram() const { return !telegram_bot_token.empty() && !social_telegram_channel_id.empty(); }
     // Faceit works out of the box on a shared API key (see faceit_shared_key.hpp)
@@ -82,6 +104,7 @@ struct ConnectionsConfig {
     // gets rate-limited.
     bool has_faceit() const { return !faceit_nickname.empty(); }
     bool has_dota() const { return !dota_account_id.empty(); }
+    bool has_multistream() const { return !multistream_server.empty() && !multistream_key.empty(); }
     // Reuses the same Telegram channel/bot as "stream started" posts (see
     // SocialPage) — a dedicated channel field would just duplicate config
     // the user already filled in.
@@ -97,6 +120,7 @@ struct ConnectionsConfig {
     bool should_post_social_telegram() const { return social_telegram_enabled && has_social_telegram(); }
     bool should_run_faceit() const { return faceit_enabled && has_faceit(); }
     bool should_run_dota() const { return dota_enabled && has_dota(); }
+    bool should_run_multistream() const { return multistream_enabled && has_multistream(); }
 
     static ConnectionsConfig load() {
         std::ifstream f(kFile, std::ios::binary);
@@ -122,6 +146,9 @@ struct ConnectionsConfig {
                 boolean("twitch_eventsub_enabled", c.twitch_eventsub_enabled);
                 str("youtube_api_key", c.youtube_api_key);
                 str("youtube_video_id", c.youtube_video_id);
+                str("youtube_channel_id", c.youtube_channel_id);
+                str("youtube_oauth_client_id", c.youtube_oauth_client_id);
+                str("youtube_oauth_client_secret", c.youtube_oauth_client_secret);
                 boolean("youtube_enabled", c.youtube_enabled);
                 str("telegram_bot_token", c.telegram_bot_token);
                 str("telegram_chat_id", c.telegram_chat_id);
@@ -135,6 +162,11 @@ struct ConnectionsConfig {
                 boolean("faceit_stats_telegram_enabled", c.faceit_stats_telegram_enabled);
                 str("dota_account_id", c.dota_account_id);
                 boolean("dota_enabled", c.dota_enabled);
+                str("multistream_label", c.multistream_label);
+                str("multistream_server", c.multistream_server);
+                str("multistream_key", c.multistream_key);
+                boolean("multistream_enabled", c.multistream_enabled);
+                str("stream_title", c.stream_title);
                 boolean("tts_enabled", c.tts_enabled);
                 integer("tts_max_chars", c.tts_max_chars);
                 boolean("obs_connected", c.obs_connected);
@@ -166,6 +198,9 @@ struct ConnectionsConfig {
         j["twitch_eventsub_enabled"] = twitch_eventsub_enabled;
         j["youtube_api_key"] = youtube_api_key;
         j["youtube_video_id"] = youtube_video_id;
+        j["youtube_channel_id"] = youtube_channel_id;
+        j["youtube_oauth_client_id"] = youtube_oauth_client_id;
+        j["youtube_oauth_client_secret"] = youtube_oauth_client_secret;
         j["youtube_enabled"] = youtube_enabled;
         j["telegram_bot_token"] = telegram_bot_token;
         j["telegram_chat_id"] = telegram_chat_id;
@@ -179,6 +214,11 @@ struct ConnectionsConfig {
         j["faceit_stats_telegram_enabled"] = faceit_stats_telegram_enabled;
         j["dota_account_id"] = dota_account_id;
         j["dota_enabled"] = dota_enabled;
+        j["multistream_label"] = multistream_label;
+        j["multistream_server"] = multistream_server;
+        j["multistream_key"] = multistream_key;
+        j["multistream_enabled"] = multistream_enabled;
+        j["stream_title"] = stream_title;
         j["tts_enabled"] = tts_enabled;
         j["tts_max_chars"] = tts_max_chars;
         j["obs_connected"] = obs_connected;

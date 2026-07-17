@@ -39,14 +39,11 @@ ColumnLayout {
         subtitle: "Live-счёт и K/D во время матча показываются прямо в карточке игрового баннера на оверлее — через официальную Game State Integration самой игры. Ставки зрителей на баллы — в разделе «Баллы»."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Установка в CS2"
-            subtitle: "Разовая настройка: кладём небольшой .cfg-файл в папку CS2 — дальше игра сама присылает начало/конец матча и счёт, ничего запускать не нужно."
-        }
+        settingsKey: "cs2_install"
+        title: "Установка в CS2"
+        subtitle: "Разовая настройка: кладём небольшой .cfg-файл в папку CS2 — дальше игра сама присылает начало/конец матча и счёт, ничего запускать не нужно."
 
         RowLayout {
             Layout.fillWidth: true

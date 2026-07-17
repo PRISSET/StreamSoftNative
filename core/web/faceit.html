@@ -9,34 +9,149 @@
     font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* The card sizes itself to its own content (see #card below) instead of
+       stretching to fill whatever pixel box the OBS source is set to — the
+       leftover space around it here stays transparent (body's own
+       background above), not a big blank rectangle, so mismatching the
+       OBS source size to the content no longer reads as "wasted space". */
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
+  /* Faceit's own brand font — pulled from esgame.net's compact-widget-
+     generator (which serves it straight, unrenamed) since it's what every
+     real FACEIT widget (including FACEIT's own site) sets its numbers in.
+     Only woff (not woff2) was available at the source; fine for a local
+     OBS browser source, no need to chase a smaller/newer format. */
+  @font-face {
+    font-family: "Stratum2";
+    src: url("/static/fonts/stratum2-400.woff") format("woff");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Stratum2";
+    src: url("/static/fonts/stratum2-600.woff") format("woff");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Stratum2";
+    src: url("/static/fonts/stratum2-700.woff") format("woff");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  /* Only one look now — "Milk": esgame.net's Compact widget in its white
+     color preset (exact query-param URL the user supplied, rendered and
+     matched directly). Every other theme (Neon/Minimal/Cyber/Cyber-dark)
+     was ripped out — this is the only palette, baked into :root instead of
+     a body[data-theme] switch, so there's no picker and nothing to
+     mismatch when a user tweaks something and forgets to also flip a
+     theme. */
   :root {
-    --accent: #ff5500;
-    --accent-dim: rgba(255, 85, 0, 0.14);
-    --card-bg: linear-gradient(160deg, rgba(22, 22, 26, 0.96), rgba(10, 10, 12, 0.98));
-    --card-border: rgba(255, 255, 255, 0.07);
+    --accent: #1a2a3e;
+    --accent2: #1a2a3e;
+    --accent-dim: rgba(26, 42, 62, 0.08);
+    --card-bg: #ffffff;
+    --card-bg-solid: #ffffff;
+    --card-border: rgba(26, 42, 62, 0.12);
+    --card-border-width: 1px;
+    --card-shadow: 0 10px 26px rgba(15, 23, 42, 0.1);
+    --card-radius: 20px;
+    --text: #1a2a3e;
+    --text-dim: #253549;
+    --text-faint: rgba(37, 53, 73, 0.65);
+    --pill-text: #ffffff;
+    --avatar-bg: rgba(26, 42, 62, 0.06);
+    --num-font: "Stratum2", sans-serif;
   }
-
-  /* Designed directly at this OBS source's native resolution (820x300, see
-     kFaceitWidth/kFaceitHeight in obs_client.hpp) — landscape, sized with
-     generous headroom on purpose so a small miscalculation doesn't clip
-     content the way earlier narrower/shorter attempts did. */
+  /* "Faceit Style" — esgame.net's Compact widget with its default color
+     preset (exact query-param URL the user supplied): dark #1F1F22 card,
+     bold red border/accent, white text/icons/gauge. Second and last color
+     option alongside the default Milk palette above. */
+  body[data-theme="faceitstyle"] {
+    --accent: #ff0000;
+    --accent2: #ff0000;
+    --accent-dim: rgba(255, 0, 0, 0.14);
+    --card-bg: #1f1f22;
+    --card-bg-solid: #1f1f22;
+    --card-border: #ff0000;
+    --card-border-width: 2px;
+    --card-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+    --text: #ffffff;
+    --text-dim: rgba(255, 255, 255, 0.82);
+    --text-faint: rgba(255, 255, 255, 0.55);
+    --pill-text: #1f1f22;
+    --avatar-bg: rgba(255, 255, 255, 0.08);
+  }
+  /* "White Cyber" — esgame.net's white-cyber-widget (exact query-param URL
+     the user supplied): near-white card, dark-navy border/corner brackets,
+     near-black text, and a "live" background — a faint grid plus a couple
+     of slowly-rotating gear/reticle line-art shapes (#cyber-deco below).
+     The reference draws these on a <canvas>; this reproduces the same
+     visual idea with plain rotating SVGs instead of reverse-engineering
+     their canvas drawing code. */
+  body[data-theme="whitecyber"] {
+    --accent: #0b1428;
+    --accent2: #0b1428;
+    --accent-dim: rgba(11, 20, 40, 0.08);
+    --card-bg: #f4f6fa;
+    --card-bg-solid: #f4f6fa;
+    --card-border: #0b1428;
+    --card-border-width: 2px;
+    --card-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+    --text: #0a0a0a;
+    --text-dim: rgba(10, 10, 10, 0.75);
+    --text-faint: rgba(10, 10, 10, 0.5);
+    --pill-text: #f4f6fa;
+    --avatar-bg: rgba(10, 10, 10, 0.06);
+  }
+  /* "DarkSide" — our own, not copied from anywhere: near-black card with a
+     slow-shifting purple/cyan gradient sweep behind it, a pulsing glow ring
+     around the border, and the ember-particle system re-enabled (every
+     other theme keeps it off — see the #glow/#particles rule below). Level
+     icon stays unmasked (its own gold/orange/red per-level color) so it
+     pops against the dark gradient instead of flattening to one tone. */
+  body[data-theme="darkside"] {
+    --accent: #b14bff;
+    --accent2: #22d3ee;
+    --accent-dim: rgba(177, 75, 255, 0.18);
+    --card-bg: #0a0812;
+    --card-bg-solid: #0a0812;
+    --card-border: rgba(177, 75, 255, 0.55);
+    --card-border-width: 2px;
+    --card-shadow: 0 0 24px rgba(177, 75, 255, 0.35), 0 0 60px rgba(34, 211, 238, 0.16);
+    --text: #f5f0ff;
+    --text-dim: rgba(245, 240, 255, 0.8);
+    --text-faint: rgba(245, 240, 255, 0.55);
+    --pill-text: #0a0812;
+    --avatar-bg: rgba(245, 240, 255, 0.08);
+  }
+  #card { font-family: "Stratum2", sans-serif; }
+  /* Sizes to its own content (see body's flex-centering above) instead of
+     stretching to fill the OBS source's pixel box — no more depending on
+     the user picking an exact matching source size. */
   #card {
     box-sizing: border-box;
     position: relative;
-    width: 100%;
-    height: 100%;
+    width: auto;
+    height: auto;
     padding: 22px;
-    border-radius: 26px;
+    border-radius: var(--card-radius);
     background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    color: #f5f5f6;
+    border: var(--card-border-width, 1px) solid var(--card-border);
+    color: var(--text);
     display: none;
     flex-direction: column;
     gap: 10px;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--card-shadow);
     overflow: hidden;
+    transition: background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
   }
   #card.visible { display: flex; }
 
@@ -121,34 +236,112 @@
     width: 190px;
     flex-shrink: 0;
   }
+  /* Avatar + small circular level-ring badge overlapping its corner — the
+     one element every real FACEIT widget (official site included) has that
+     ours didn't: https://strugly.com/ru/faceit-widget's variants all use
+     this exact convention (ring colored by skill bracket, number inside)
+     instead of a text pill. Dota keeps its old text pill (#drank) below —
+     Dota's rank is a named tier ("Divine V"), not a 1-10 number, so a
+     numeric ring doesn't translate the same way. */
+  #avatar-wrap { position: relative; flex-shrink: 0; }
   #avatar, #davatar {
     width: 68px;
     height: 68px;
     border-radius: 50%;
     object-fit: cover;
-    background: rgba(255, 255, 255, 0.08);
-    border: 4px solid var(--accent);
+    background: var(--avatar-bg);
+    border: 3px solid var(--card-border);
     box-sizing: border-box;
     flex-shrink: 0;
+    display: block;
   }
   #avatar.hidden, #davatar.hidden { display: none; }
+  /* Arc gauge, not a solid-border ring — matches how real FACEIT widgets
+     (strugly.com's variants included) show level progress: a partial circle
+     that fills clockwise from empty to full as you climb through the
+     current level's ELO band, level number in the center. stroke-dasharray/
+     stroke-dashoffset on #skill-badge-ring is set from JS using the exact
+     same 0-100 percentage as the linear bar below (applyLevelProgress). */
+  #skill-badge {
+    position: absolute;
+    right: -8px;
+    bottom: -8px;
+    width: 34px;
+    height: 34px;
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.4));
+  }
+  #skill-badge.hidden { display: none; }
+  #skill-badge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  #skill-badge .ring-bg { fill: var(--card-bg-solid, #17171a); stroke: var(--card-border); stroke-width: 4; }
+  #skill-badge .ring-fill {
+    fill: none;
+    stroke: var(--level-color, var(--accent));
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 106.8;
+    stroke-dashoffset: 106.8;
+    transition: stroke-dashoffset 0.6s ease;
+  }
+  #skill-badge-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text);
+  }
   #head-text, #dhead-text { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
   #nickname, #dnickname {
     font-size: 20px;
     font-weight: 800;
+    font-family: var(--num-font);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  #skill, #drank {
+  #drank {
     align-self: flex-start;
     font-size: 13px;
     padding: 3px 10px;
     border-radius: 999px;
     background: var(--accent);
-    color: #150c06;
+    color: var(--pill-text);
     font-weight: 800;
   }
+
+  /* Progress-to-next-level bar — also a near-universal element on real
+     FACEIT widgets that ours lacked. Computed purely client-side from the
+     public CS2 ELO level brackets (see LEVEL_BANDS in game-banner-cs2.js);
+     no backend/API change needed since FACEIT's snapshot already gives us
+     the raw elo number. */
+  #level-progress-row { display: flex; flex-direction: column; gap: 4px; }
+  #level-progress-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--card-border);
+    overflow: hidden;
+  }
+  #level-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.6s ease;
+  }
+  #level-progress-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #level-progress-label { font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+  #today-wl { display: flex; gap: 6px; flex-shrink: 0; }
+  #today-wl span {
+    font-size: 11px;
+    font-weight: 800;
+    padding: 1px 7px;
+    border-radius: 999px;
+  }
+  #today-wins { color: #6ee7a8; background: rgba(110, 231, 168, 0.14); }
+  #today-losses { color: #ff7882; background: rgba(255, 120, 130, 0.14); }
 
   #divider, #ddivider { width: 1px; align-self: stretch; background: var(--card-border); flex-shrink: 0; }
 
@@ -167,7 +360,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
     flex: 1.1;
     min-width: 0;
   }
@@ -183,6 +376,7 @@
     font-size: 44px;
     font-weight: 800;
     line-height: 1;
+    font-family: var(--num-font);
     text-shadow: 0 0 22px var(--accent-dim);
   }
   #elo-today {
@@ -194,8 +388,8 @@
   #elo-today.hidden { display: none; }
   #elo-today.up { color: #6ee7a8; background: rgba(110, 231, 168, 0.14); }
   #elo-today.down { color: #ff7882; background: rgba(255, 120, 130, 0.14); }
-  #elo-today.flat { color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.08); }
-  #sparkline { width: 100%; height: 34px; }
+  #elo-today.flat { color: var(--text-faint); background: var(--card-border); }
+  #sparkline { width: 100%; height: 22px; }
 
   #divider2 { width: 1px; align-self: stretch; background: var(--card-border); flex-shrink: 0; }
 
@@ -212,8 +406,8 @@
     border-radius: 12px;
     padding: 8px 12px;
   }
-  .stat-tile .v { font-size: 18px; font-weight: 800; }
-  .stat-tile .l { font-size: 10px; color: rgba(255, 255, 255, 0.55); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-tile .v { font-size: 18px; font-weight: 800; font-family: var(--num-font); }
+  .stat-tile .l { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
 
   #matches, #dmatches {
     display: flex;
@@ -241,10 +435,10 @@
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
   }
   .match .match-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
-  .match .wl { font-size: 13px; font-weight: 800; line-height: 1.3; }
+  .match .wl { font-size: 17px; font-weight: 800; line-height: 1.3; letter-spacing: 0.02em; }
   .match.win .wl { color: #6ee7a8; }
   .match.loss .wl { color: #ff7882; }
-  .match .kd { font-size: 11px; color: rgba(255, 255, 255, 0.55); line-height: 1.3; }
+  .match .kd { font-size: 11px; color: var(--text-faint); line-height: 1.3; }
 
   /* Fed by CS2's own Game State Integration (see gsi_state.hpp) — shown
      below the last-5-matches row while a match is actually in progress
@@ -261,7 +455,10 @@
     background: var(--accent-dim);
     border: 1px solid var(--accent);
   }
-  #live.visible { display: flex; }
+  /* The compact stat-strip card doesn't show a live-match strip or bet
+     banner at all — pure Faceit stats only, matching the reference exactly
+     — so this stays hidden even while .visible would otherwise apply. */
+  #live.visible { display: none; }
   #live-dot {
     width: 9px;
     height: 9px;
@@ -272,11 +469,11 @@
   }
   @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   #live-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #ff4d4d; flex-shrink: 0; }
-  #live-map { font-size: 14px; font-weight: 700; color: rgba(255, 255, 255, 0.85); flex-shrink: 0; }
-  #live-score { font-size: 22px; font-weight: 800; display: flex; align-items: baseline; gap: 6px; margin-left: auto; }
-  #live-score .side { color: rgba(255, 255, 255, 0.4); }
+  #live-map { font-size: 14px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
+  #live-score { font-size: 22px; font-weight: 800; display: flex; align-items: baseline; gap: 6px; margin-left: auto; font-family: var(--num-font); }
+  #live-score .side { color: var(--text-faint); }
   #live-score .side.mine { color: var(--accent); }
-  #live-kda { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.75); flex-shrink: 0; }
+  #live-kda { font-size: 13px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
 
   /* Shown only while the betting window is actually open (see
      GsiState::betting_open_) — separate from #live so it can disappear the
@@ -292,7 +489,7 @@
     background: rgba(110, 231, 168, 0.12);
     border: 1px solid rgba(110, 231, 168, 0.5);
   }
-  #bet-banner.visible { display: flex; }
+  #bet-banner.visible { display: none; }
   #bet-dot {
     width: 8px;
     height: 8px;
@@ -327,9 +524,293 @@
     animation: live-pulse 1.4s ease-in-out infinite;
   }
   #dlive-icon { width: 26px; height: 26px; border-radius: 6px; flex-shrink: 0; }
-  #dlive-hero { font-size: 14px; font-weight: 700; color: rgba(255, 255, 255, 0.85); flex-shrink: 0; }
-  #dlive-score { font-size: 22px; font-weight: 800; margin-left: auto; }
-  #dlive-kda { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.75); flex-shrink: 0; }
+  #dlive-hero { font-size: 14px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
+  #dlive-score { font-size: 22px; font-weight: 800; margin-left: auto; font-family: var(--num-font); }
+  #dlive-kda { font-size: 13px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; }
+
+  /* Milk/Faceit Style/White Cyber are clean/flat by design — no floating
+     embers or glow blob. DarkSide re-enables both below. */
+  #glow, #particles { display: none; }
+  body[data-theme="darkside"] #glow,
+  body[data-theme="darkside"] #particles { display: block; }
+  body[data-theme="darkside"] #particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+
+  /* DarkSide's slow-shifting purple/cyan gradient sweep behind the card
+     content, plus a breathing border glow — the "live background" that's
+     actually ours, not copied off a reference. A big soft two-color
+     gradient, oversized and animated via background-position so it drifts
+     rather than just sitting there. */
+  #darkside-sweep { display: none; }
+  body[data-theme="darkside"] #darkside-sweep {
+    display: block;
+    position: absolute;
+    inset: -40%;
+    pointer-events: none;
+    background: radial-gradient(circle at 30% 30%, rgba(177, 75, 255, 0.35), transparent 55%),
+                radial-gradient(circle at 75% 70%, rgba(34, 211, 238, 0.3), transparent 55%);
+    background-size: 200% 200%;
+    animation: darkside-sweep-move 10s ease-in-out infinite;
+    filter: blur(2px);
+  }
+  @keyframes darkside-sweep-move {
+    0%, 100% { background-position: 0% 0%, 100% 100%; }
+    50% { background-position: 40% 60%, 60% 30%; }
+  }
+  @keyframes darkside-border-pulse {
+    0%, 100% { box-shadow: var(--card-shadow); }
+    50% { box-shadow: 0 0 34px rgba(177, 75, 255, 0.55), 0 0 80px rgba(34, 211, 238, 0.28); }
+  }
+  body[data-theme="darkside"] #card { animation: darkside-border-pulse 3.2s ease-in-out infinite; }
+
+  /* White Cyber's "live" background — a faint grid plus slowly-rotating
+     gear/reticle line art, all hidden (zero cost) unless that theme is
+     actually active. #card already has position:relative + overflow:
+     hidden from its base rule. */
+  #cyber-deco { display: none; }
+  body[data-theme="whitecyber"] #cyber-deco {
+    display: block;
+    position: absolute;
+    inset: -20px;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(11, 20, 40, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(11, 20, 40, 0.07) 1px, transparent 1px);
+    background-size: 18px 18px;
+    animation: cyber-grid-pan 14s linear infinite;
+  }
+  @keyframes cyber-grid-pan { from { background-position: 0 0; } to { background-position: 90px 54px; } }
+  .cyber-gear, .cyber-reticle {
+    position: absolute;
+    color: rgba(11, 20, 40, 0.16);
+    pointer-events: none;
+  }
+  .cyber-gear { animation: cyber-gear-spin 22s linear infinite; }
+  .cyber-gear.reverse { animation-direction: reverse; animation-duration: 30s; }
+  .cyber-reticle { animation: cyber-reticle-pulse 3.2s ease-in-out infinite; }
+  @keyframes cyber-gear-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes cyber-reticle-pulse { 0%, 100% { opacity: 0.45; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+  /* Tracer streaks flying across the card, looping — the "летят пули" the
+     reference's canvas draws. Pure CSS: a short bright-to-transparent
+     gradient bar translating from off the left edge to off the right. */
+  .cyber-tracer {
+    position: absolute;
+    height: 2px;
+    width: 70px;
+    left: -90px;
+    background: linear-gradient(to right, transparent, var(--accent), transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: cyber-tracer-fly 3.6s linear infinite;
+  }
+  @keyframes cyber-tracer-fly {
+    0% { transform: translateX(0); opacity: 0; }
+    6% { opacity: 0.8; }
+    92% { opacity: 0.8; }
+    100% { transform: translateX(calc(100% + 160px)); opacity: 0; }
+  }
+  .cyber-corner { display: none; position: absolute; width: 16px; height: 16px; pointer-events: none; }
+  body[data-theme="whitecyber"] .cyber-corner { display: block; border-color: var(--accent); }
+  #cyber-corner-tl { top: 8px; left: 8px; border-top: 3px solid; border-left: 3px solid; }
+  #cyber-corner-tr { top: 8px; right: 8px; border-top: 3px solid; border-right: 3px solid; }
+  #cyber-corner-bl { bottom: 8px; left: 8px; border-bottom: 3px solid; border-left: 3px solid; }
+  #cyber-corner-br { bottom: 8px; right: 8px; border-bottom: 3px solid; border-right: 3px solid; }
+
+  /* Square shape — for streamers who want this as a corner box instead of a
+     wide banner (FaceitPage.qml's "Форма виджета" picker, config.bannerShape
+     over /ws). The card already fills 100% of whatever the OBS source box
+     is (see #card width/height above), so this is purely a rearrangement:
+     head/ELO/stats stack instead of sitting in a row, and the last-5-matches
+     strip wraps to two rows instead of staying five-across. Resize the OBS
+     source itself to an actual square by dragging its corner — we don't
+     touch OBS automatically here, only the page layout. */
+  /* Every element below that's flex:1/flex:1.1 in the landscape row layout
+     (#cs2-content, #dota-content, #top, #dtop, #elo-section) was sized to
+     fight for leftover HORIZONTAL space against its row siblings. Stacked
+     into a column, those same grow factors fight for leftover VERTICAL
+     space instead — one section (elo-section) balloons to fill the column,
+     collapsing #matches to ~0 height while its un-clipped children still
+     paint at that position, reading as content overlapping. So every
+     rearranged container gets flex: 0 0 auto here (natural height, no
+     grow/shrink) — the card's own overflow: hidden trims the rare case
+     where content still doesn't fit a too-small square source. */
+  body[data-shape="square"] #card { padding: 16px; gap: 8px; }
+  body[data-shape="square"] #cs2-content,
+  body[data-shape="square"] #dota-content { flex: 0 0 auto; }
+  body[data-shape="square"] #top,
+  body[data-shape="square"] #dtop {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  body[data-shape="square"] #head,
+  body[data-shape="square"] #dhead {
+    width: auto;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+  }
+  body[data-shape="square"] #head-text,
+  body[data-shape="square"] #dhead-text { align-items: center; }
+  body[data-shape="square"] #divider,
+  body[data-shape="square"] #divider2,
+  body[data-shape="square"] #ddivider { display: none; }
+  body[data-shape="square"] #elo-section {
+    flex: 0 0 auto;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+  body[data-shape="square"] #elo-row { justify-content: center; }
+  body[data-shape="square"] #sparkline { display: none; }
+  body[data-shape="square"] #level-progress-row { align-items: center; }
+  body[data-shape="square"] #level-progress-track { max-width: 160px; }
+  body[data-shape="square"] #stats,
+  body[data-shape="square"] #dstats { flex: 0 0 auto; width: 100%; }
+  body[data-shape="square"] #matches,
+  body[data-shape="square"] #dmatches { flex: 0 0 auto; flex-wrap: wrap; }
+  body[data-shape="square"] .match { min-width: 30%; }
+
+  /* Compact shape — a slim single-row pill (~450x120), modeled directly on
+     esgame.net's "Compact" FACEIT widget generator (user-supplied reference
+     markup): level badge + name/ELO + a 4-up stat row all in one line, a
+     thin divider, then just the W/L letters (no map icon, no K/D) right-
+     aligned below. Reuses every element the landscape layout already has —
+     just hides what doesn't fit (label, progress bar, sparkline, elo-today
+     pill) and strips the stat-tile/match backgrounds down to plain text. */
+  body[data-shape="compact"] #card { padding: 12px 16px; gap: 4px; border-radius: 18px; justify-content: center; }
+  body[data-shape="compact"] #cs2-content,
+  body[data-shape="compact"] #dota-content { flex: 0 0 auto; gap: 4px; }
+  body[data-shape="compact"] #top,
+  body[data-shape="compact"] #dtop { flex: 0 0 auto; gap: 8px; }
+  body[data-shape="compact"] #head,
+  body[data-shape="compact"] #dhead { width: auto; max-width: 210px; }
+  /* elo-row (the small atom-glyph + ELO number, normally a sibling row
+     inside #elo-section) gets physically moved into #head-text by
+     applyShape() in the page script when shape=compact, so it stacks
+     tightly under the nickname exactly like the reference's "ct0m / ~3407"
+     two-line block — CSS alone can't reach across the #head/#elo-section
+     DOM boundary to place them together, so the JS does an actual DOM move
+     (and moves it back on any other shape). #elo-section itself collapses
+     to nothing once emptied (its other children are already hidden above). */
+  body[data-shape="compact"] #head-text,
+  body[data-shape="compact"] #dhead-text { gap: 2px; }
+  body[data-shape="compact"] #elo-section { display: none; }
+  /* esgame.net's Compact widget (the reference this shape copies) has no
+     avatar photo at all — the level gauge itself, enlarged, is the only
+     left-side visual. #avatar-wrap shrinks to exactly the badge's size and
+     the badge switches from "overlapping a photo's corner" (position:
+     absolute) to being its own normally-flowed circle. */
+  body[data-shape="compact"] #avatar,
+  body[data-shape="compact"] #davatar { display: none; }
+  body[data-shape="compact"] #avatar-wrap { width: 52px; height: 52px; flex-shrink: 0; }
+  body[data-shape="compact"] #skill-badge {
+    position: static;
+    width: 52px;
+    height: 52px;
+  }
+  body[data-shape="compact"] #skill-badge .ring-bg,
+  body[data-shape="compact"] #skill-badge .ring-fill { stroke-width: 3.5; }
+  body[data-shape="compact"] #skill-badge-num { font-size: 17px; }
+  /* Milk swaps the hand-drawn progress ring for the real FACEIT level-icon
+     SVG (see applySkillIcon() in game-banner-cs2.js), recolored via CSS
+     mask to match the reference exactly. */
+  #skill-badge-icon { display: none; }
+  body[data-shape="compact"] #skill-badge { display: none; }
+  body[data-shape="compact"] #skill-badge-icon {
+    display: block;
+    width: 52px;
+    height: 52px;
+  }
+  /* Level-up/down crossfade (see game-banner-cs2.js's applyLevelVisuals) —
+     applies regardless of theme, since it's a plain opacity transition. */
+  #skill-badge, #skill-badge-icon { transition: opacity 0.22s ease; }
+  #skill-badge.level-fade, #skill-badge-icon.level-fade { opacity: 0; }
+  body[data-shape="compact"] #nickname,
+  body[data-shape="compact"] #dnickname {
+    font-size: 16px;
+    letter-spacing: 0.01em;
+    max-width: none;
+  }
+  body[data-shape="compact"] #label,
+  body[data-shape="compact"] #level-progress-row,
+  body[data-shape="compact"] #sparkline,
+  body[data-shape="compact"] #elo-today,
+  body[data-shape="compact"] #divider,
+  body[data-shape="compact"] #divider2,
+  body[data-shape="compact"] #ddivider { display: none; }
+  body[data-shape="compact"] #elo-section { flex: 0 0 auto; justify-content: center; gap: 0; }
+  body[data-shape="compact"] #elo-row { align-items: center; }
+  body[data-shape="compact"] #elo { font-size: 20px; font-weight: 800; }
+  /* FACEIT's own "elo" glyph (three linked dots) next to the number — the
+     reference renders this exact path inline, not as a downloaded asset. */
+  #elo-atom { display: none; }
+  body[data-shape="compact"] #elo-atom {
+    display: block;
+    width: 15px;
+    height: 6.4px;
+    flex-shrink: 0;
+    margin-right: 1px;
+    color: var(--text-dim);
+  }
+  body[data-shape="compact"] #stats { flex: 1; width: auto; min-width: 0; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+  body[data-shape="compact"] .stat-tile {
+    background: none;
+    border: none;
+    padding: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  body[data-shape="compact"] .stat-tile .v { font-size: 28px; font-weight: 900; white-space: nowrap; }
+  body[data-shape="compact"] .stat-tile .l { font-size: 11px; white-space: nowrap; color: var(--text-dim); }
+  /* Horizontal glow divider — replaces the vertical #divider/#divider2 this
+     shape hides above. Cyber variants get an extra sweeping highlight. */
+  #compact-divider { display: none; }
+  body[data-shape="compact"] #compact-divider {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 1px;
+    margin: 1px 0;
+    overflow: hidden;
+    background: linear-gradient(to right, transparent, var(--card-border) 30%, var(--accent) 50%, var(--card-border) 70%, transparent);
+  }
+  /* Region/country ladder rank — see region_rank/country_rank in
+     faceit_client.hpp's Snapshot, rendered by applyRankRow() in
+     game-banner-cs2.js. Sits beside the W/L strip in the same row instead
+     of its own (see #matches-row below), same as the reference layout. */
+  #rank-row { display: none; }
+  body[data-shape="compact"] #rank-row { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .rank-box { display: flex; align-items: center; gap: 3px; }
+  .rank-box.hidden { display: none; }
+  .rank-box img { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; }
+  .rank-box .hash { font-size: 12px; font-weight: 800; color: var(--text-faint); }
+  .rank-box .num { font-size: 13px; font-weight: 800; }
+  #matches-row { display: flex; flex-direction: column; }
+  body[data-shape="compact"] #matches-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  body[data-shape="compact"] #matches,
+  body[data-shape="compact"] #dmatches {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  body[data-shape="compact"] .match {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  body[data-shape="compact"] .match .map-badge,
+  body[data-shape="compact"] .match .kd { display: none; }
+  body[data-shape="compact"] .match .wl { font-size: 18px; text-shadow: 0 0 6px currentColor; }
 </style>
 </head>
 <body>
@@ -337,14 +818,61 @@
 <div id="card">
   <div id="glow"></div>
   <div id="particles"></div>
+  <div id="darkside-sweep"></div>
+  <div id="cyber-deco">
+    <svg class="cyber-gear" viewBox="0 0 100 100" style="width:90px;height:90px;left:-20px;top:-25px;">
+      <circle cx="50" cy="50" r="34" fill="none" stroke="currentColor" stroke-width="13" stroke-dasharray="9 7"></circle>
+      <circle cx="50" cy="50" r="14" fill="none" stroke="currentColor" stroke-width="2"></circle>
+    </svg>
+    <svg class="cyber-gear reverse" viewBox="0 0 100 100" style="width:46px;height:46px;left:44px;top:38px;">
+      <circle cx="50" cy="50" r="32" fill="none" stroke="currentColor" stroke-width="14" stroke-dasharray="8 6"></circle>
+      <circle cx="50" cy="50" r="12" fill="none" stroke="currentColor" stroke-width="2"></circle>
+    </svg>
+    <svg class="cyber-reticle" viewBox="0 0 100 100" style="width:64px;height:64px;right:110px;top:8px;">
+      <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="50" cy="50" r="15" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="50" cy="50" r="3" fill="currentColor"></circle>
+      <line x1="50" y1="4" x2="50" y2="96" stroke="currentColor" stroke-width="1"></line>
+      <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="1"></line>
+    </svg>
+    <svg class="cyber-reticle" viewBox="0 0 100 100" style="width:48px;height:48px;right:16px;bottom:-6px;animation-delay:1.5s;">
+      <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="50" cy="50" r="15" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="50" cy="50" r="3" fill="currentColor"></circle>
+      <line x1="50" y1="4" x2="50" y2="96" stroke="currentColor" stroke-width="1"></line>
+      <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="1"></line>
+    </svg>
+    <svg class="cyber-reticle" viewBox="0 0 100 100" style="width:34px;height:34px;left:180px;top:-4px;animation-delay:0.8s;">
+      <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="50" cy="50" r="3" fill="currentColor"></circle>
+      <line x1="50" y1="4" x2="50" y2="96" stroke="currentColor" stroke-width="1"></line>
+      <line x1="4" y1="50" x2="96" y2="50" stroke="currentColor" stroke-width="1"></line>
+    </svg>
+    <div class="cyber-tracer" style="top:22%;animation-delay:0s;"></div>
+    <div class="cyber-tracer" style="top:58%;animation-delay:1.3s;"></div>
+    <div class="cyber-tracer" style="top:82%;animation-delay:2.5s;"></div>
+  </div>
+  <div id="cyber-corner-tl" class="cyber-corner"></div>
+  <div id="cyber-corner-tr" class="cyber-corner"></div>
+  <div id="cyber-corner-bl" class="cyber-corner"></div>
+  <div id="cyber-corner-br" class="cyber-corner"></div>
 
   <div id="cs2-content">
     <div id="top">
       <div id="head">
-        <img id="avatar" class="hidden" />
+        <div id="avatar-wrap">
+          <img id="avatar" class="hidden" />
+          <div id="skill-badge" class="hidden">
+            <svg viewBox="0 0 40 40">
+              <circle class="ring-bg" cx="20" cy="20" r="17"></circle>
+              <circle id="skill-badge-ring" class="ring-fill" cx="20" cy="20" r="17"></circle>
+            </svg>
+            <span id="skill-badge-num"></span>
+          </div>
+          <div id="skill-badge-icon"></div>
+        </div>
         <div id="head-text">
           <div id="nickname"></div>
-          <div id="skill"></div>
         </div>
       </div>
 
@@ -353,8 +881,21 @@
       <div id="elo-section">
         <div id="label">FACEIT · CS2</div>
         <div id="elo-row">
+          <svg id="elo-atom" viewBox="-2 0 28 12" fill="currentColor">
+            <path d="M12 3c0 .463-.105.902-.292 1.293l1.998 2A2.97 2.97 0 0 1 15 6a2.99 2.99 0 0 1 1.454.375l1.921-1.921a3 3 0 1 1 1.5 1.328l-2.093 2.093a3 3 0 1 1-5.49-.168l-1.999-2a2.992 2.992 0 0 1-2.418.074L5.782 7.876a3 3 0 1 1-1.328-1.5l1.921-1.921A3 3 0 1 1 12 3z"></path>
+          </svg>
           <div id="elo"></div>
           <div id="elo-today" class="hidden"></div>
+        </div>
+        <div id="level-progress-row">
+          <div id="level-progress-track"><div id="level-progress-fill"></div></div>
+          <div id="level-progress-meta">
+            <div id="level-progress-label"></div>
+            <div id="today-wl">
+              <span id="today-wins">0</span>
+              <span id="today-losses">0</span>
+            </div>
+          </div>
         </div>
         <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
       </div>
@@ -364,7 +905,20 @@
       <div id="stats"></div>
     </div>
 
-    <div id="matches"></div>
+    <div id="compact-divider"></div>
+    <div id="matches-row">
+      <div id="rank-row">
+        <div id="region-rank-box" class="rank-box hidden">
+          <img id="region-icon" alt="" />
+          <span class="hash">#</span><span id="region-rank-num" class="num"></span>
+        </div>
+        <div id="country-rank-box" class="rank-box hidden">
+          <img id="country-flag" alt="" />
+          <span class="hash">#</span><span id="country-rank-num" class="num"></span>
+        </div>
+      </div>
+      <div id="matches"></div>
+    </div>
     <div id="live">
       <div id="live-dot"></div>
       <div id="live-label">Live</div>
@@ -439,10 +993,63 @@
   // for anyone who hasn't set up Dota.
   let activeGame = "cs2";
 
+  // Applied on every "config" push (sent once on connect, then again any
+  // time the GUI saves /api/settings) — so picking a new theme in the
+  // "Тема виджета" picker updates an already-open OBS browser source
+  // without needing a manual source refresh. Also re-triggers both modules'
+  // refresh() so canvas/SVG bits drawn with an explicit color (the ELO
+  // sparkline) redraw with the new theme's accent — CSS alone only
+  // recolors things styled via var(--accent), not prior draw calls, and
+  // the very first "config" push commonly lands after the first refresh()
+  // already painted the sparkline in the default neon color.
+  // Custom avatar URL (FaceitPage.qml's "Своя картинка" upload) — takes
+  // priority over whatever avatar the Faceit/OpenDota API returns for this
+  // account, exposed globally so both game-banner-*.js modules can read it
+  // without a second wiring path. Cache-busted with a timestamp on every
+  // config push so a fresh upload replaces an already-loaded <img> instead
+  // of the browser serving its cached copy of the old file at the same URL.
+  window.StreamSoftCustomAvatarUrl = "";
+
+  // Only one layout now — the compact stat-strip card (esgame.net's Milk
+  // widget, copied exactly per the user's reference). Stacks nickname/ELO
+  // into one tight two-line block: CSS can't reach across the #head/#elo-
+  // section DOM boundary, so this physically moves #elo-row into
+  // #head-text once, up front, rather than switching between layouts.
+  function relocateEloRow() {
+    const eloRow = document.getElementById("elo-row");
+    const headText = document.getElementById("head-text");
+    if (!eloRow || !headText) return;
+    if (eloRow.parentElement !== headText) headText.appendChild(eloRow);
+  }
+
+  document.body.dataset.shape = "compact";
+  relocateEloRow();
+
+  // Two color options — "milk" (default) and "faceitstyle" — both exact
+  // copies of esgame.net reference URLs the user supplied. Nothing else
+  // (shape, layout) varies, just this.
+  function applyTheme(name) {
+    document.body.dataset.theme = name || "milk";
+  }
+
+  function applyAvatarUrl(url) {
+    window.StreamSoftCustomAvatarUrl = url ? url + "?t=" + Date.now() : "";
+  }
+
   function connectWs() {
     ws = new WebSocket(`ws://${location.host}/ws`);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      if (data.type === "config") {
+        applyTheme(data.bannerTheme);
+        applyAvatarUrl(data.bannerAvatarUrl);
+        // Theme/avatar affect things already drawn (the icon mask color,
+        // an <img src>) that don't redraw themselves from a config push
+        // alone — re-run refresh() so they apply.
+        window.GameBannerCS2.refresh(render);
+        window.GameBannerDota.refresh(render);
+        return;
+      }
       if (data.type === "active_game") {
         activeGame = data.game;
         render();

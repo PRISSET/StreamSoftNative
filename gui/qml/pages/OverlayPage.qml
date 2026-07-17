@@ -7,6 +7,21 @@ ColumnLayout {
     spacing: 18
 
     property bool loading: false
+    property var status: ({})
+
+    function refreshStatus() {
+        api.get("/api/status/overview", function (ok, data) {
+            if (ok) root.status = data
+        })
+    }
+
+    Timer {
+        interval: 4000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.refreshStatus()
+    }
 
     function applySettings(settings) {
         loading = true
@@ -41,8 +56,85 @@ ColumnLayout {
         subtitle: "Оформление и масштаб чата/алертов для OBS Browser Source."
     }
 
-    GlassCard {
+    CollapsibleCard {
         Layout.fillWidth: true
+        settingsKey: "overlay_status"
+        title: "Статус"
+        subtitle: "Что реально работает прямо сейчас — не нужно заходить в каждую вкладку, чтобы проверить."
+
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 2
+            columnSpacing: 24
+            rowSpacing: 10
+
+            component StatusRow: RowLayout {
+                required property string label
+                required property bool active
+                property string note: ""
+                Layout.fillWidth: true
+                spacing: 8
+                Rectangle {
+                    width: 9; height: 9; radius: 4.5
+                    color: active ? Theme.good : Theme.textFaint
+                }
+                Text {
+                    text: label + (note.length > 0 ? " — " + note : "")
+                    color: active ? Theme.text : Theme.textFaint
+                    font.pixelSize: Theme.fontSm
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+            }
+
+            StatusRow {
+                label: "Twitch"
+                active: !!(root.status.twitch && root.status.twitch.chat_enabled)
+                note: root.status.twitch && root.status.twitch.configured
+                    ? (root.status.twitch.chat_enabled ? "чат подключён" : "выключен")
+                    : "не настроен"
+            }
+            StatusRow {
+                label: "YouTube"
+                active: !!(root.status.youtube && root.status.youtube.live)
+                note: !root.status.youtube || !root.status.youtube.configured
+                    ? "не настроен"
+                    : (root.status.youtube.live ? "чат подключён" : "включён, но сейчас не в эфире")
+            }
+            StatusRow {
+                label: "Telegram"
+                active: !!(root.status.telegram && root.status.telegram.enabled)
+                note: root.status.telegram && root.status.telegram.configured ? "подключён" : "не настроен"
+            }
+            StatusRow {
+                label: "OBS"
+                active: !!(root.status.obs && root.status.obs.running)
+                note: root.status.obs && root.status.obs.running ? "открыт" : "закрыт"
+            }
+            StatusRow {
+                label: "Мультистрим"
+                active: !!(root.status.multistream && root.status.multistream.enabled && root.status.multistream.synced)
+                note: !root.status.multistream || !root.status.multistream.enabled
+                    ? "выключен"
+                    : (root.status.multistream.synced ? "применено в OBS" : "не применено")
+            }
+            StatusRow {
+                label: "Игровой баннер"
+                active: root.status.cs2_live || root.status.dota_live
+                note: (root.status.active_game === "dota2" ? "Dota 2" : "CS2") + ((root.status.cs2_live || root.status.dota_live) ? " — матч идёт" : " — сейчас не идёт")
+            }
+            StatusRow {
+                label: "Озвучка"
+                active: !!root.status.tts_enabled
+                note: root.status.tts_enabled ? "включена" : "выключена"
+            }
+        }
+    }
+
+    CollapsibleCard {
+        Layout.fillWidth: true
+        settingsKey: "overlay_appearance"
+        title: "Оформление и масштаб"
 
         Text { text: "Шаблон"; color: Theme.textDim; font.pixelSize: Theme.fontMd; font.bold: true }
         GlassComboBox {
@@ -118,14 +210,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         id: previewCard
         Layout.fillWidth: true
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Живое превью"
-            subtitle: "То же самое, что летит в OBS — прямо здесь, без браузера."
-        }
+        settingsKey: "overlay_preview"
+        title: "Живое превью"
+        subtitle: "То же самое, что летит в OBS — прямо здесь, без браузера."
 
         Rectangle {
             id: alertStage
@@ -244,7 +334,12 @@ ColumnLayout {
                     { text: "Подписка", value: "subscribe" },
                     { text: "Подарочная подписка", value: "gift_sub" },
                     { text: "Рейд", value: "raid" },
-                    { text: "Донат битсами", value: "cheer" }
+                    { text: "Донат битсами", value: "cheer" },
+                    { text: "YouTube: новый участник", value: "youtube_sub" },
+                    { text: "YouTube: юбилей участия", value: "youtube_sub_milestone" },
+                    { text: "YouTube: подарочное участие", value: "youtube_gift_sub" },
+                    { text: "YouTube: Super Chat", value: "youtube_superchat" },
+                    { text: "YouTube: Super Sticker", value: "youtube_supersticker" }
                 ]
             }
             PillButton {
@@ -259,9 +354,12 @@ ColumnLayout {
         }
     }
 
-    GlassCard {
+    CollapsibleCard {
         id: obsCard
         Layout.fillWidth: true
+        settingsKey: "overlay_obsConnect"
+        title: "Подключение к OBS"
+        subtitle: "Само добавит источники StreamSoft Chat / StreamSoft Alerts в текущую сцену. OBS должен быть закрыт на момент нажатия."
 
         property bool obsConnecting: false
         property bool obsConnected: false
@@ -272,12 +370,6 @@ ColumnLayout {
             api.get("/api/connections", function (ok, data) {
                 if (ok && data && data.obs_connected) obsCard.obsConnected = true
             })
-        }
-
-        SectionHeader {
-            Layout.fillWidth: true
-            title: "Подключение к OBS"
-            subtitle: "Само добавит источники StreamSoft Chat / StreamSoft Alerts в текущую сцену. OBS должен быть закрыт на момент нажатия."
         }
 
         RowLayout {
